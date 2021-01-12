@@ -1,0 +1,49 @@
+---
+title: "Chapter1"
+author: "Julin Maloof"
+date: "11/3/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Book Notes
+
+## Chapter 1: what is deep learning?
+
+### AI, Machine Learning, Deep Learning
+
+__AI__ automate intellectual tasks normally performed by humans.
+
+Early efforts attempted to make a bunch of rules for the machine to follow. e.g. early chess programs, etc.
+
+But these fail as the tasks get harder.
+
+__Machine Learning__
+
+Can a computer learn the rules from the data without us telling us what the rules are?
+
+Input data and answers and have the computer figure out the rules, instead of the classic paradigm of input data and rules and compute the answer.
+
+Need to find appropriate _Representation_ of the data in order to learn from it.
+
+Learning: automate the search for better representations.
+
+__DEEP learning__
+
+successive layers of representations
+
+Number of layers == _depth_
+
+The layers in deep learning are usually neural networks
+
+Each layer has _weights_ which are essentially parameters for the layer.  There can be millions of weights.
+
+We use a _loss function_ to determine how far away the predictions are from the target (truth).  We will want to minimize the loss function.
+
+The _optimizer_ adjusts the weights to improve the loss function via backpropogation
+
+## History of Machine Learning
+
