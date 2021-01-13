@@ -7,7 +7,7 @@ output: html_document
 
 ## Installations
 
-set up python environment, only has to be done once NOT WORKING
+NOT WORKING set up python environment, only has to be done once 
 ```{r, eval=FALSE}
 virtualenv_remove("r-python3.8")
 virtualenv_create("r-python3.8", python="/usr/local/opt/python@3.8/bin/python3")
@@ -20,8 +20,10 @@ install_keras(method="virtualenv", envname="r-python3.8")
 ```
 
 GIVING UP AND TRYING CONDA METHOD
-
 ```{r, eval=FALSE}
+#only needs to be done once
+install.packages("keras")
+install.packages("reticulate")
 library(keras)
 library(reticulate)
 #use_condaenv("tf")
@@ -369,7 +371,8 @@ system.time(history <- model %>% fit(
   oj.train.label.part,
   epochs = 100,
   batch_size = 256,
-  validation_data = list(oj.train.val, oj.train.label.val)
+  validation_data = list(oj.train.val, oj.train.label.val),
+  verbose=0 # delete this if you want real-time plots
 ))
 ```
 
