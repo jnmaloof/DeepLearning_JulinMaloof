@@ -20,6 +20,8 @@ install_keras(method="virtualenv", envname="r-python3.8")
 ```
 
 GIVING UP AND TRYING CONDA METHOD
+
+this works but now I am using new mac tensor flow, see below.
 ```{r, eval=FALSE}
 #only needs to be done once
 install.packages("keras")
@@ -32,15 +34,40 @@ use_condaenv("r-reticulate")
 install_keras(method="conda", envname="r-reticulate")
 ```
 
+## New installation usiing new mac tensor flow
+
+But this actually runs slower on at least Boston dataset
+```{bash, eval=FALSE}
+ /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/apple/tensorflow_macos/master/scripts/download_and_install.sh)"
+ 
+var/folders/xr/9cbydt955pj42zfq6mc_y5g40000gn/T/tmp.ggNkh5wb/tensorflow_macos/install_venv.sh --python=/usr/local/opt/python@3.8/bin/python3 /Users/jmaloof/.virtualenvs/tensorflow_macos_venv/
+
+. "/Users/jmaloof/.virtualenvs/tensorflow_macos_venv/bin/activate"
+
+pip install keras
+pip install h5py pyyaml requests Pillow scipy
+```
+
 
 ## load libraries
 
-```{r}
+```{r, eval=FALSE}
 library(keras)
 library(reticulate)
-use_condaenv("r-reticulate")
-#use_condaenv("tf")
+use_virtualenv("~/.virtualenvs/tensorflow_macos_venv/", required = TRUE )
+py_module_available("tensorflow") 
+library(tensorflow)
 ```
+above is slower on old MacBook processing Boston data set.  Use the conda install instead.
+
+
+## alternate load libraries:
+
+```{r}
+library(keras)
+use_condaenv("r-reticulate")
+```
+
 
 ## Reuters data set
 
@@ -150,8 +177,6 @@ results
 
 get the data
 ```{r}
-library(keras)
-
 dataset <- dataset_boston_housing()
 c(c(train_data, train_targets), c(test_data, test_targets)) %<-% dataset
 ```
@@ -194,7 +219,7 @@ k <- 4
 indices <- sample(1:nrow(train_data))
 folds <- cut(indices, breaks = k, labels = FALSE)
 
-num_epochs <- 5
+num_epochs <- 100
 all_scores <- c()
 for (i in 1:k) {
   cat("processing fold #", i, "\n")
