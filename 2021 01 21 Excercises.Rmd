@@ -1,0 +1,207 @@
+---
+title: "Homework 2020 01 21"
+author: "Julin Maloof"
+date: "1/16/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(keras)
+use_condaenv("r-reticulate")
+```
+
+## OJ
+Try fitting differnt models
+```{r}
+library(ISLR)
+data(OJ)
+```
+
+
+```{r}
+OJ %>% select(StoreID, STORE) # these are redundant
+```
+
+because store is categorical we need to turn that into a series of dummy variables.
+```{r}
+store_cat <- OJ %>% select(StoreID) %>%
+  mutate(row=1:nrow(.),data=1) %>%
+  pivot_wider(id_cols = row, names_from=StoreID, values_from=data, values_fill=0, names_prefix="Store")
+```
+
+```{r}
+OJ <- OJ %>% select(-StoreID, -STORE, -Store7) %>% cbind(store_cat)
+OJ
+```
+
+### split into test and train and other formatting
+
+```{r}
+set.seed(111820)
+train <- sample(1:nrow(OJ), size = 800)
+oj.train <- OJ[train,]
+oj.test <- OJ[-train,]
+```
+
+```{r}
+oj.train.label <- oj.train %>% select(Purchase) %>% mutate(Purchase=ifelse(Purchase=="CH", 0, 1)) %>% pull(Purchase)
+oj.test.label <- oj.test %>% select(Purchase) %>% mutate(Purchase=ifelse(Purchase=="CH", 0, 1)) %>% pull(Purchase)
+```
+
+scale it
+```{r}
+oj.train <- oj.train %>% select(-Purchase)
+oj.test <- oj.test %>% select(-Purchase)
+
+oj.mean <- apply(oj.train, 2, mean)
+oj.std <- apply(oj.test, 2, sd)
+
+oj.train <- scale(oj.train, center=oj.mean, scale=oj.std)
+oj.test <- scale(oj.test, center=oj.mean, scale=oj.std)
+```
+
+
+### validation set
+
+```{r}
+set.seed(12312)
+val <- sample(1:nrow(oj.train), size = 100)
+
+oj.train.val <- oj.train[val,]
+oj.train.label.val <- oj.train.label[val]
+
+oj.train.part <- oj.train[-val,]
+oj.train.label.part <- oj.train.label[-val]
+
+```
+
+
+### set up and run the model!
+
+
+
+I am going to try exploring the model specifications more.
+
+```{r}
+buildmodel <- function(tensor_size, hidden_layers, input_shape) {
+  
+  # input layer
+  model <- keras_model_sequential() %>% 
+    layer_dense(units = tensor_size, activation = "relu", input_shape = input_shape ) 
+  
+  # additional layers
+  if (hidden_layers>1) {
+    for(i in 2:hidden_layers) {
+      model <- model %>% layer_dense(units=tensor_size, activation = "relu")
+    }
+  }
+  
+  # output layer
+  model <- model %>% layer_dense(units = 1, activation = "sigmoid")
+  
+  # compile it
+  model %>% compile(
+    optimizer = "rmsprop",
+    loss = "binary_crossentropy",
+    metrics = c("accuracy")
+  )
+  
+}
+```
+
+set up a grid of layers and tensor sizes
+```{r}
+OJmodels <- expand_grid(tensor_size=c(4,8,16,32,64), hidden_layers=1:3, )
+OJmodels
+```
+
+initiate the models
+```{r}
+OJmodels <- OJmodels %>%
+  mutate(model=map2(tensor_size, hidden_layers, buildmodel, input_shape=ncol(oj.train)))
+OJmodels
+```
+
+```{r}
+OJmodels <- OJmodels %>%
+  mutate(hist=map(model, ~ fit(.,
+                               oj.train.part,
+                               oj.train.label.part,
+                               epochs = 200,
+                               batch_size = 256,
+                               validation_data = list(oj.train.val, oj.train.label.val),
+                               verbose=0 # delete this if you want real-time plots
+  )
+  )) %>%
+  mutate(val_acc_max=map_dbl(hist, ~ max(.$metrics$val_accuracy))
+  )
+```
+
+```{r}
+OJmodels %>% select(-model, -hist) %>% arrange(desc(val_acc_max))
+```
+```{r}
+OJmodels %>% filter(tensor_size==32, hidden_layers==3) %>% 
+  pull(hist) %>% 
+  magrittr::extract2(1) %>%
+  plot() 
+```
+50 epochs
+
+```{r}
+OJmodels %>% filter(tensor_size==64, hidden_layers==2) %>% 
+  pull(hist) %>% 
+  magrittr::extract2(1) %>%
+  plot()
+```
+
+25 epochs
+
+```{r}
+OJmodels %>% filter(tensor_size==8, hidden_layers==3) %>% 
+  pull(hist) %>% 
+  magrittr::extract2(1) %>%
+  plot()
+```
+more consistent.  what happens with more epochs?
+
+```{r}
+model8_3 <- buildmodel(8,3, ncol(oj.train.part))
+```
+
+```{r}
+history8_3 <- model8_3 %>% fit(
+                               oj.train.part,
+                               oj.train.label.part,
+                               epochs = 400,
+                               batch_size = 256,
+                               validation_data = list(oj.train.val, oj.train.label.val),
+                               verbose=0 # delete this if you want real-time plots
+)
+```
+
+```{r}
+plot(history8_3)
+```
+```{r}
+model8_3_150 <- buildmodel(8, 3, input_shape = ncol(oj.train.label.part))
+model8_3_150 %>% fit(
+                               oj.train.part,
+                               oj.train.label.part,
+                               epochs = 150,
+                               batch_size = 256,
+                               validation_data = list(oj.train.val, oj.train.label.val),
+                               verbose=1 
+)
+```
+
+```{r}
+model8_3_150 %>% evaluate(oj.test, oj.test.label)
+```
+
+
