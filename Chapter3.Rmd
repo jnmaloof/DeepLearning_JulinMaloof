@@ -21,7 +21,6 @@ install_keras(method="virtualenv", envname="r-python3.8")
 
 GIVING UP AND TRYING CONDA METHOD
 
-this works but now I am using new mac tensor flow, see below.
 ```{r, eval=FALSE}
 #only needs to be done once
 install.packages("keras")
@@ -36,7 +35,7 @@ install_keras(method="conda", envname="r-reticulate")
 
 ## New installation usiing new mac tensor flow
 
-But this actually runs slower on at least Boston dataset
+But this actually runs slower on at least Boston dataset.  So, use conda insall, above.
 ```{bash, eval=FALSE}
  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/apple/tensorflow_macos/master/scripts/download_and_install.sh)"
  
@@ -51,6 +50,7 @@ pip install h5py pyyaml requests Pillow scipy
 
 ## load libraries
 
+don't use this one
 ```{r, eval=FALSE}
 library(keras)
 library(reticulate)
@@ -62,7 +62,7 @@ above is slower on old MacBook processing Boston data set.  Use the conda instal
 
 
 ## alternate load libraries:
-
+use this one
 ```{r}
 library(keras)
 use_condaenv("r-reticulate")
@@ -233,7 +233,7 @@ for (i in 1:k) {
   model <- build_model()                                               
   
   print(
-    system.time(#53.121   6.024  45.550 
+    system.time(#52.229   7.077  40.545  royce-2, with apple tensor flow
       model %>% fit(partial_train_data, partial_train_targets,             
                     epochs = num_epochs, batch_size = 1, verbose = 0)
     )
