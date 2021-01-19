@@ -1,0 +1,28 @@
+---
+title: "Cancer NA"
+author: "Julin Maloof"
+date: "1/18/2021"
+output: html_document
+---
+
+NAs in the loss function arise because of NAs in the input data set or because of low information predictors (genes).
+
+If you are scaling the genes, then you will get NAs for genes with a standard deviation of 0 (and there are some).
+
+Additionally, there are genes that do have a positive standard deviation but still have such a small amount of information that they also cause NAs in the loss function.
+
+So I remove genes that are either 0  SD or have an average expression of < 1.
+
+```{r}
+novariation <- apply(pancandata, 2, sd)==0
+pancandata <- pancandata[,!novariation]
+
+lowexpression <- apply(pancandata, 2, mean) < 1
+pancandata <- pancandata[, !lowexpression]
+```
+
+Other notes:
+
+Remember to remove the sample ID column before running the above code
+
+Remember that keras uses zero indexing, so your labels need to be integers from 0 to 4, rather than from 1 to 5.

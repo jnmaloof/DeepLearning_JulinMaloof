@@ -1,0 +1,544 @@
+---
+title: "Homework 2020 01 21"
+author: "Julin Maloof"
+date: "1/16/2021"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(keras)
+use_condaenv("r-reticulate")
+```
+
+## OJ
+Try fitting differnt models
+```{r}
+library(ISLR)
+data(OJ)
+```
+
+
+```{r}
+OJ %>% select(StoreID, STORE) # these are redundant
+```
+
+because store is categorical we need to turn that into a series of dummy variables.
+```{r}
+store_cat <- OJ %>% select(StoreID) %>%
+  mutate(row=1:nrow(.),data=1) %>%
+  pivot_wider(id_cols = row, names_from=StoreID, values_from=data, values_fill=0, names_prefix="Store")
+```
+
+```{r}
+OJ <- OJ %>% select(-StoreID, -STORE, -Store7) %>% cbind(store_cat)
+OJ
+```
+
+### split into test and train and other formatting
+
+```{r}
+set.seed(111820)
+train <- sample(1:nrow(OJ), size = 800)
+oj.train <- OJ[train,]
+oj.test <- OJ[-train,]
+```
+
+```{r}
+oj.train.label <- oj.train %>% select(Purchase) %>% mutate(Purchase=ifelse(Purchase=="CH", 0, 1)) %>% pull(Purchase)
+oj.test.label <- oj.test %>% select(Purchase) %>% mutate(Purchase=ifelse(Purchase=="CH", 0, 1)) %>% pull(Purchase)
+```
+
+scale it
+```{r}
+oj.train <- oj.train %>% select(-Purchase)
+oj.test <- oj.test %>% select(-Purchase)
+
+oj.mean <- apply(oj.train, 2, mean)
+oj.std <- apply(oj.test, 2, sd)
+
+oj.train <- scale(oj.train, center=oj.mean, scale=oj.std)
+oj.test <- scale(oj.test, center=oj.mean, scale=oj.std)
+```
+
+
+### validation set
+
+```{r}
+set.seed(12312)
+val <- sample(1:nrow(oj.train), size = 100)
+
+oj.train.val <- oj.train[val,]
+oj.train.label.val <- oj.train.label[val]
+
+oj.train.part <- oj.train[-val,]
+oj.train.label.part <- oj.train.label[-val]
+
+```
+
+
+### set up and run the model!
+
+
+
+I am going to try exploring the model specifications more.
+
+```{r}
+buildmodel <- function(tensor_size, hidden_layers, input_shape) {
+  
+  # input layer
+  model <- keras_model_sequential() %>% 
+    layer_dense(units = tensor_size, activation = "relu", input_shape = input_shape ) 
+  
+  # additional layers
+  if (hidden_layers>1) {
+    for(i in 2:hidden_layers) {
+      model <- model %>% layer_dense(units=tensor_size, activation = "relu")
+    }
+  }
+  
+  # output layer
+  model <- model %>% layer_dense(units = 1, activation = "sigmoid")
+  
+  # compile it
+  model %>% compile(
+    optimizer = "rmsprop",
+    loss = "binary_crossentropy",
+    metrics = c("accuracy")
+  )
+  
+}
+```
+
+set up a grid of layers and tensor sizes
+```{r}
+OJmodels <- expand_grid(tensor_size=c(4,8,16,32,64), hidden_layers=1:3, )
+OJmodels
+```
+
+initiate the models
+```{r}
+OJmodels <- OJmodels %>%
+  mutate(model=map2(tensor_size, hidden_layers, buildmodel, input_shape=ncol(oj.train)))
+OJmodels
+```
+
+```{r}
+OJmodels <- OJmodels %>%
+  mutate(hist=map(model, ~ fit(.,
+                               oj.train.part,
+                               oj.train.label.part,
+                               epochs = 200,
+                               batch_size = 32,
+                               validation_data = list(oj.train.val, oj.train.label.val),
+                               verbose=0 # delete this if you want real-time plots
+  )
+  )) %>%
+  mutate(val_acc_max=map_dbl(hist, ~ max(.$metrics$val_accuracy))
+  )
+```
+
+```{r}
+OJmodels %>% select(-model, -hist) %>% arrange(desc(val_acc_max))
+```
+```{r}
+OJmodels %>% filter(tensor_size==32, hidden_layers==3) %>% 
+  pull(hist) %>% 
+  magrittr::extract2(1) %>%
+  plot() 
+```
+50 epochs
+
+```{r}
+OJmodels %>% filter(tensor_size==64, hidden_layers==2) %>% 
+  pull(hist) %>% 
+  magrittr::extract2(1) %>%
+  plot()
+```
+
+25 epochs
+
+```{r}
+OJmodels %>% filter(tensor_size==8, hidden_layers==3) %>% 
+  pull(hist) %>% 
+  magrittr::extract2(1) %>%
+  plot()
+```
+more consistent.  what happens with more epochs?
+
+```{r}
+model8_3 <- buildmodel(8,3, ncol(oj.train.part))
+```
+
+```{r}
+history8_3 <- model8_3 %>% fit(
+                               oj.train.part,
+                               oj.train.label.part,
+                               epochs = 400,
+                               batch_size = 32,
+                               validation_data = list(oj.train.val, oj.train.label.val),
+                               verbose=0 # delete this if you want real-time plots
+)
+```
+
+```{r}
+plot(history8_3)
+```
+```{r}
+model8_3_150 <- buildmodel(8, 3, input_shape = ncol(oj.train.label.part))
+model8_3_150 %>% fit(
+                               oj.train.part,
+                               oj.train.label.part,
+                               epochs = 150,
+                               batch_size = 32,
+                               validation_data = list(oj.train.val, oj.train.label.val),
+                               verbose=1 
+)
+```
+
+```{r}
+model8_3_150 %>% evaluate(oj.test, oj.test.label)
+```
+
+## Cancer data set
+
+Download
+```{r, eval=FALSE}
+curl::curl_download("https://archive.ics.uci.edu/ml/machine-learning-databases/00401/TCGA-PANCAN-HiSeq-801x20531.tar.gz", "input/TCGA-PANCAN-HiSeq-801x20531.tar.gz")
+```
+
+```{bash, eval=FALSE}
+cd input
+tar -xvzf TCGA-PANCAN-HiSeq-801x20531.tar.gz
+cd TCGA-PANCAN-HiSeq-801x20531
+gzip data.csv
+cd ../
+echo "*" >> .gitignore
+```
+
+```{r}
+pancandata_raw <- read_csv("input/TCGA-PANCAN-HiSeq-801x20531/data.csv.gz")
+dim(pancandata_raw)
+head(pancandata_raw[,1:10])
+```
+
+```{r}
+pancanlabels <- read_csv("input/TCGA-PANCAN-HiSeq-801x20531/labels.csv")
+head(pancanlabels)
+```
+
+make sure that labels and data samples match.  Remove sampleID row
+```{r}
+all(pancandata_raw$X1==pancanlabels$X1)
+
+pancandata <- pancandata_raw %>% select(starts_with("gene"))
+
+pancanlabels <- pancanlabels %>% select(Class)
+```
+
+Get rid of zero information and low expression genes
+```{r}
+novariation <- apply(pancandata, 2, sd)==0
+pancandata <- pancandata[,!novariation]
+
+lowexpression <- apply(pancandata, 2, mean) < 1
+pancandata <- pancandata[, !lowexpression]
+```
+
+
+Convert pancan labels to an integer.
+```{r}
+pancan_key <- levels(factor(pancanlabels$Class)) %>% set_names(0:(length(.)-1))
+pancan_key
+
+pancanlabels <- as.integer(factor(pancanlabels$Class)) -1
+head(pancanlabels)
+```
+
+Alternate: Convert pancan labels to 1 hot
+```{r, eval=FALSE}
+pancan_key <- levels(factor(pancanlabels$Class)) %>% set_names(1:(length(.)))
+
+pancanlabels <- pancanlabels %>%
+  pull(Class) %>%
+  factor() %>%
+  as.integer() %>%
+  magrittr::subtract(1) %>%
+  to_categorical()
+```
+
+
+Will take 150 as a test set and do cross validation on the remainder.
+Also: standardize predictors
+
+```{r}
+set.seed(20210117)
+test <- sample(1:nrow(pancandata), size=150)
+
+pancandata.train <- pancandata[-test,]
+pancanlabels.train <- pancanlabels[-test]
+
+pancandata.test <- pancandata[test,]
+pancanlabels.test <- pancanlabels[test]
+
+pancanmean <- apply(pancandata.train,2,mean)
+pancansd <- apply(pancandata.train, 2, sd)
+
+pancandata.train <- scale(pancandata.train, center=pancanmean, scale = pancansd)
+pancandata.test <- scale(pancandata.test, center=pancanmean, scale = pancansd)
+
+```
+
+### setup cross validation
+
+how many output categories?
+```{r}
+length(pancan_key)
+```
+
+
+```{r}
+k <- 4
+indices <- sample(1:nrow(pancandata.train))
+folds <- cut(indices, breaks = k, labels = FALSE)
+
+buildmodel_pancan <- function(tensor_size, hidden_layers, input_shape) {
+  
+  # input layer
+  model <- keras_model_sequential() %>% 
+    layer_dense(units = tensor_size, activation = "relu", input_shape = input_shape ) 
+  
+  # additional layers
+  if (hidden_layers>1) {
+    for(i in 2:hidden_layers) {
+      model <- model %>% layer_dense(units=tensor_size, activation = "relu")
+    }
+  }
+  
+  # output layer
+  model <- model %>% layer_dense(units = 5, activation = "softmax")
+  
+  # compile it
+  model %>% compile(
+    optimizer = "rmsprop",
+    loss = "sparse_categorical_crossentropy",
+    metrics = c("accuracy")
+  )
+  
+}
+```
+
+64 X 3
+```{r}
+k_clear_session()
+num_epochs <- 100
+all_histories_64_3 <- NULL
+
+
+for (i in 1:k) {
+  cat("processing fold #", i, "\n")
+  
+  # Prepare the validation data: data from partition # k
+  val_indices <- which(folds == i, arr.ind = TRUE)
+  val_data <- pancandata.train[val_indices,]
+  val_targets <- pancanlabels.train[val_indices]
+  
+  # Prepare the training data: data from all other partitions
+  partial_train_data <- pancandata.train[-val_indices,]
+  partial_train_targets <- pancanlabels.train[-val_indices]
+  
+  # Build the Keras model (already compiled)
+  model <- buildmodel_pancan(tensor_size = 64,
+                             hidden_layers = 3,
+                             input_shape = ncol(pancandata.train))
+  
+  # Train the model (in silent mode, verbose=0)
+  print(system.time(history <- model %>% fit(
+    partial_train_data, partial_train_targets,
+    validation_data = list(val_data, val_targets),
+    epochs = num_epochs, batch_size = 32, verbose = 0
+  )))
+  all_histories_64_3 <- bind_rows(all_histories_64_3, 
+                                  tibble(k=i, epoch=1:num_epochs, as_tibble(history$metrics)) )
+}
+```
+
+```{r}
+average_history_64_3 <- all_histories_64_3 %>%
+  pivot_longer(cols = c(-k, -epoch)) %>%
+  group_by(name, epoch) %>%
+  summarize(average=mean(value), sem=sd(value)/sqrt(4)) %>%
+  mutate(metric=ifelse(str_detect(name, "loss"), "loss", "accuracy"),
+         set=ifelse(str_detect(name, "val"), "validation", "test"))
+
+average_history_64_3
+```
+
+```{r}
+average_history_64_3 %>% 
+  ggplot(aes(x=epoch, y=average, ymin=average-sem, ymax=average+sem, color=set, fill=set)) +
+  geom_line() +
+  geom_ribbon(alpha=.2, color=NA) + 
+  facet_wrap(~metric, ncol=1, scales = "free_y")
+```
+
+50 should be sufficient.  fit amodel and evaluate test set
+```{r}
+model_64_3_50 <- buildmodel_pancan(tensor_size = 64,
+                             hidden_layers = 3,
+                             input_shape = ncol(pancandata.train))
+  
+model_64_3_50 %>% fit(
+    pancandata.train, pancanlabels.train,
+    epochs = 50, batch_size = 32, verbose = 0)
+
+model_64_3_50 %>% evaluate(pancandata.test, pancanlabels.test)
+```
+
+### tensor size 16?
+
+16 X 3
+```{r}
+k_clear_session()
+num_epochs <- 100
+all_histories_16_3 <- NULL
+
+
+for (i in 1:k) {
+  cat("processing fold #", i, "\n")
+  
+  # Prepare the validation data: data from partition # k
+  val_indices <- which(folds == i, arr.ind = TRUE)
+  val_data <- pancandata.train[val_indices,]
+  val_targets <- pancanlabels.train[val_indices]
+  
+  # Prepare the training data: data from all other partitions
+  partial_train_data <- pancandata.train[-val_indices,]
+  partial_train_targets <- pancanlabels.train[-val_indices]
+  
+  # Build the Keras model (already compiled)
+  model <- buildmodel_pancan(tensor_size = 16,
+                             hidden_layers = 3,
+                             input_shape = ncol(pancandata.train))
+  
+  # Train the model (in silent mode, verbose=0)
+  print(system.time(history <- model %>% fit(
+    partial_train_data, partial_train_targets,
+    validation_data = list(val_data, val_targets),
+    epochs = num_epochs, batch_size = 32, verbose = 0
+  )))
+  all_histories_16_3 <- bind_rows(all_histories_16_3, 
+                                  tibble(k=i, epoch=1:num_epochs, as_tibble(history$metrics)) )
+}
+```
+
+```{r}
+average_history_16_3 <- all_histories_16_3 %>%
+  pivot_longer(cols = c(-k, -epoch)) %>%
+  group_by(name, epoch) %>%
+  summarize(average=mean(value), sem=sd(value)/sqrt(4)) %>%
+  mutate(metric=ifelse(str_detect(name, "loss"), "loss", "accuracy"),
+         set=ifelse(str_detect(name, "val"), "validation", "test"))
+
+average_history_16_3
+```
+
+```{r}
+average_history_16_3 %>% 
+  ggplot(aes(x=epoch, y=average, ymin=average-sem, ymax=average+sem, color=set, fill=set)) +
+  geom_line() +
+  geom_ribbon(alpha=.2, color=NA) + 
+  facet_wrap(~metric, ncol=1, scales = "free_y")
+```
+
+25 should be sufficient.  fit a model and evaluate test set
+```{r}
+model_16_3_25 <- buildmodel_pancan(tensor_size = 16,
+                             hidden_layers = 3,
+                             input_shape = ncol(pancandata.train))
+  
+model_16_3_25 %>% fit(
+    pancandata.train, pancanlabels.train,
+    epochs = 25, batch_size = 32, verbose = 0)
+
+model_16_3_25 %>% evaluate(pancandata.test, pancanlabels.test)
+```
+
+what would random accuracy be?
+
+```{r}
+mean(pancanlabels.test==sample(pancanlabels.test))
+```
+
+### 16 X 2
+
+16 X 2
+```{r}
+k_clear_session()
+num_epochs <- 200
+all_histories_16_2 <- NULL
+
+
+for (i in 1:k) {
+  cat("processing fold #", i, "\n")
+  
+  # Prepare the validation data: data from partition # k
+  val_indices <- which(folds == i, arr.ind = TRUE)
+  val_data <- pancandata.train[val_indices,]
+  val_targets <- pancanlabels.train[val_indices]
+  
+  # Prepare the training data: data from all other partitions
+  partial_train_data <- pancandata.train[-val_indices,]
+  partial_train_targets <- pancanlabels.train[-val_indices]
+  
+  # Build the Keras model (already compiled)
+  model <- buildmodel_pancan(tensor_size = 16,
+                             hidden_layers = 2,
+                             input_shape = ncol(pancandata.train))
+  
+  # Train the model (in silent mode, verbose=0)
+  print(system.time(history <- model %>% fit(
+    partial_train_data, partial_train_targets,
+    validation_data = list(val_data, val_targets),
+    epochs = num_epochs, batch_size = 32, verbose = 0
+  )))
+  all_histories_16_2 <- bind_rows(all_histories_16_2, 
+                                  tibble(k=i, epoch=1:num_epochs, as_tibble(history$metrics)) )
+}
+```
+
+```{r}
+average_history_16_2 <- all_histories_16_2 %>%
+  pivot_longer(cols = c(-k, -epoch)) %>%
+  group_by(name, epoch) %>%
+  summarize(average=mean(value), sem=sd(value)/sqrt(4)) %>%
+  mutate(metric=ifelse(str_detect(name, "loss"), "loss", "accuracy"),
+         set=ifelse(str_detect(name, "val"), "validation", "test"))
+
+average_history_16_2
+```
+
+```{r}
+average_history_16_2 %>% 
+  ggplot(aes(x=epoch, y=average, ymin=average-sem, ymax=average+sem, color=set, fill=set)) +
+  geom_line() +
+  geom_ribbon(alpha=.2, color=NA) + 
+  facet_wrap(~metric, ncol=1, scales = "free_y")
+```
+
+50 should be sufficient.  fit a model and evaluate test set
+```{r}
+model_16_2_50 <- buildmodel_pancan(tensor_size = 16,
+                             hidden_layers = 2,
+                             input_shape = ncol(pancandata.train))
+  
+model_16_2_50 %>% fit(
+    pancandata.train, pancanlabels.train,
+    epochs = 50, batch_size = 32, verbose = 0)
+
+model_16_2_50 %>% evaluate(pancandata.test, pancanlabels.test)
+```
