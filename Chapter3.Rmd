@@ -328,6 +328,8 @@ because store is categorical we need to turn that into a series of dummy variabl
 store_cat <- OJ %>% select(StoreID) %>%
   mutate(row=1:nrow(.),data=1) %>%
   pivot_wider(id_cols = row, names_from=StoreID, values_from=data, values_fill=0, names_prefix="Store")
+
+store_cat
 ```
 
 ```{r}
