@@ -1,0 +1,81 @@
+---
+title: "2021 01 28 Exercises"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(keras)
+use_condaenv("r-reticulate")
+```
+
+### Parkinsons
+
+```{r}
+pdata <- read_csv("input/parkinsons_updrs.data") %>%
+  rename(subjectID=`subject#`)
+head(pdata)
+```
+
+
+set up test and train, by subject
+
+```{r}
+length(unique(pdata$subjectID))
+unique(pdata$subjectID)
+```
+
+Let's set 6 subjects aside as the test set.  It would be nice to do a cross validation by subjID but for now I am realy short on time, so just do one validation.
+
+```{r}
+set.seed(3434)
+testsubj <- sample(1:42, size=6)
+
+motor_UPDRS.test <- pdata %>% filter(subjectID %in% testsubj) %>% pull(motor_UPDRS)
+motor_UPDRS.train <- pdata %>% filter(! subjectID %in% testsubj) %>% pull(motor_UPDRS)
+
+pdata.test <- pdata %>% filter(subjectID %in% testsubj) %>% select(-subjectID, -test_time, -motor_UPDRS, -total_UPDRS)
+pdata.train <-  pdata %>% filter(! subjectID %in% testsubj) %>% select( -test_time, -motor_UPDRS, -total_UPDRS)
+
+valsubj <- sample(unique(pdata.train$subjectID), size=6)
+
+pdata.train.partial <- pdata.train %>% filter(! subjectID %in% valsubj) %>% select(-subjectID)
+pdata.train.val <- pdata.train %>% filter(subjectID %in% valsubj) %>% select(-subjectID)
+
+motor_UPDRS.train.partial <- motor_UPDRS.train[! pdata.train$subjectID %in% valsubj]
+motor_UPDRS.val <- motor_UPDRS.train[pdata.train$subjectID %in% valsubj]
+
+pdata.train <- pdata.train %>% select(-subjectID)
+```
+
+center and scale the predictors
+
+```{r}
+(pcenter <- pdata.train %>% apply(2, mean))
+(psd <- pdata.train %>% apply(2, sd))
+
+pdata.train <- scale(pdata.train, center=pcenter, scale = psd)
+pdata.test <- scale(pdata.test, center=pcenter, scale = psd)
+pdata.train.partial <- scale(pdata.train.partial, center=pcenter, scale = psd)
+pdata.train.val <- scale(pdata.train.val, center=pcenter, scale = psd)
+```
+
+build and compile model
+```{r}
+pmodel <- keras_model_sequential() %>%
+  layer_dense(units = 16, shape=ncol(pdta.train), activation = "relu") %>%
+  layer_dense(units = 16, activation = "relu") %>%
+  layer_dense(units = 16, activation = "relu") %>%
+  layer_dense(units = 1)
+
+pmodel <- pmodel %>% compile(
+  optimizer = "rmsprop", 
+    loss = "mse", 
+    metrics = c("mae")
+  )
+```
+
