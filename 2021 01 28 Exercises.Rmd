@@ -38,18 +38,27 @@ testsubj <- sample(1:42, size=6)
 motor_UPDRS.test <- pdata %>% filter(subjectID %in% testsubj) %>% pull(motor_UPDRS)
 motor_UPDRS.train <- pdata %>% filter(! subjectID %in% testsubj) %>% pull(motor_UPDRS)
 
-pdata.test <- pdata %>% filter(subjectID %in% testsubj) %>% select(-subjectID, -test_time, -motor_UPDRS, -total_UPDRS)
-pdata.train <-  pdata %>% filter(! subjectID %in% testsubj) %>% select( -test_time, -motor_UPDRS, -total_UPDRS)
+pdata.test <- pdata %>% filter(subjectID %in% testsubj) %>% select(-test_time, -motor_UPDRS, -total_UPDRS)
+pdata.train <-  pdata %>% filter(! subjectID %in% testsubj) %>% select(-test_time, -motor_UPDRS, -total_UPDRS)
 
 valsubj <- sample(unique(pdata.train$subjectID), size=6)
 
-pdata.train.partial <- pdata.train %>% filter(! subjectID %in% valsubj) %>% select(-subjectID)
-pdata.train.val <- pdata.train %>% filter(subjectID %in% valsubj) %>% select(-subjectID)
+pdata.train.partial <- pdata.train %>% filter(! subjectID %in% valsubj)
+pdata.train.val <- pdata.train %>% filter(subjectID %in% valsubj)
 
 motor_UPDRS.train.partial <- motor_UPDRS.train[! pdata.train$subjectID %in% valsubj]
 motor_UPDRS.val <- motor_UPDRS.train[pdata.train$subjectID %in% valsubj]
 
+trainID <- pdata.train %>% pull(subjectID)
+train.partialID <- pdata.train.partial %>% pull(subjectID)
+valID <- pdata.train.val %>% pull(subjectID)
+testID <- pdata.test %>% pull(subjectID)
+
 pdata.train <- pdata.train %>% select(-subjectID)
+pdata.train.partial <- pdata.train.partial %>% select(-subjectID)
+pdata.train.val <- pdata.train.val %>% select(-subjectID)
+pdata.test <- pdata.test %>% select(-subjectID)
+
 ```
 
 center and scale the predictors
@@ -64,10 +73,10 @@ pdata.train.partial <- scale(pdata.train.partial, center=pcenter, scale = psd)
 pdata.train.val <- scale(pdata.train.val, center=pcenter, scale = psd)
 ```
 
-build and compile model
+build and compile model, fit
 ```{r}
 pmodel <- keras_model_sequential() %>%
-  layer_dense(units = 16, shape=ncol(pdta.train), activation = "relu") %>%
+  layer_dense(units = 16, input_shape=ncol(pdata.train), activation = "relu") %>%
   layer_dense(units = 16, activation = "relu") %>%
   layer_dense(units = 16, activation = "relu") %>%
   layer_dense(units = 1)
@@ -77,5 +86,197 @@ pmodel <- pmodel %>% compile(
     loss = "mse", 
     metrics = c("mae")
   )
+
+system.time(phistory <- pmodel %>% fit(
+    pdata.train.partial, 
+    motor_UPDRS.train.partial,
+    validation_data = list(pdata.train.val, 
+                           motor_UPDRS.val),
+    epochs = 20, 
+    batch_size = 128, 
+    verbose = 0
+))
 ```
+
+```{r}
+plot(phistory)
+```
+
+refit with full train set, 6 epochs
+
+```{r}
+pmodel <- keras_model_sequential() %>%
+  layer_dense(units = 16, input_shape=ncol(pdata.train), activation = "relu") %>%
+  layer_dense(units = 16, activation = "relu") %>%
+  layer_dense(units = 16, activation = "relu") %>%
+  layer_dense(units = 1)
+
+pmodel <- pmodel %>% compile(
+  optimizer = "rmsprop", 
+    loss = "mse", 
+    metrics = c("mae")
+  )
+
+system.time(pmodel %>% fit(
+    pdata.train, 
+    motor_UPDRS.train,
+    epochs = 6, 
+    batch_size = 128, 
+    verbose = 0
+))
+```
+
+```{r}
+presults <- pmodel %>% evaluate(pdata.test, motor_UPDRS.test)
+presults
+```
+
+how bad is this?  what is range of motor_UPDRS?
+
+```{r}
+ppredictions <- pmodel %>% predict(x=pdata.test)
+```
+
+
+```{r}
+qplot(x=motor_UPDRS.test, y=ppredictions, color=as.factor(testID))
+```
+
+```{r}
+ppredictions.train <- pmodel %>% predict(x=pdata.train)
+```
+
+
+```{r}
+qplot(x=motor_UPDRS.train, y=ppredictions.train)
+```
+
+probably hopeless
+
+## Abalone
+
+```{r}
+adata <- read_csv("input/abalone.data", 
+                  col_names = c("sex",
+                                "length",
+                                "diameter",
+                                "height",
+                                "wholeWeight",
+                                "shuckedWeight",
+                                "visceraWeight",
+                                "shellWeight",
+                                "rings"))
+head(adata)
+dim(adata)
+```
+
+format it, etc
+```{r}
+atarget <- adata %>% pull(rings)
+adata <- adata %>% mutate(sex=as.integer(as.factor(sex))) %>%
+  select(-rings)
+
+train <- sample(nrow(adata), size=3200)
+val <- sample(train, size=320)
+
+adata.train <- adata[train,]
+adata.test <- adata[-train,]
+adata.val <- adata[val,]
+adata.train.part <- adata[setdiff(train, val),]
+
+atarget.train <- atarget[train]
+atarget.test <- atarget[-train]
+atarget.val <- atarget[val]
+atarget.train.part <- atarget[setdiff(train, val)]
+```
+
+scale and center
+```{r}
+acenter <- apply(adata.train,2, mean)
+asd <- apply(adata.train,2, sd)
+
+adata.train <- scale(adata.train, center=acenter, scale=asd)
+adata.test <- scale(adata.test, center=acenter, scale=asd)
+adata.train.part <- scale(adata.train.part,center=acenter, scale=asd)
+adata.val <- scale(adata.val, center=acenter,scale=asd)
+```
+
+
+## regression problem.
+
+setup model
+```{r}
+amodel <- keras_model_sequential() %>%
+  layer_dense(units=8, activation="relu", input_shape = ncol(adata.train)) %>%
+  layer_dense(units=8, activation="relu") %>%
+  layer_dense(units=1)
+
+amodel <- amodel %>% compile(
+  optimizer = "rmsprop", 
+    loss = "mse", 
+    metrics = c("mae")
+  )
+
+system.time(ahistory <- amodel %>% fit(
+    adata.train.part, 
+    atarget.train.part,
+    validation_data=list(adata.val, atarget.val),
+    epochs = 100, 
+    batch_size = 128, 
+    verbose = 0
+))
+```
+
+```{r}
+plot(ahistory)
+```
+
+25 epochs looks good
+```{r}
+amodel <- keras_model_sequential() %>%
+  layer_dense(units=8, activation="relu", input_shape = ncol(adata.train)) %>%
+  layer_dense(units=8, activation="relu") %>%
+  layer_dense(units=1)
+
+amodel <- amodel %>% compile(
+  optimizer = "rmsprop", 
+    loss = "mse", 
+    metrics = c("mae")
+  )
+
+system.time(ahistory <- amodel %>% fit(
+    adata.train, 
+    atarget.train,
+    epochs = 25, 
+    batch_size = 128, 
+    verbose = 0
+))
+```
+
+```{r}
+amodel %>% evaluate(adata.test, atarget.test)
+```
+
+```{r}
+apredict <- amodel %>% predict(x=adata.test)
+```
+
+```{r}
+qplot(atarget.test, apredict, alpha=0.5)
+```
+
+```{r}
+cor(apredict, atarget.test)
+```
+
+```{r}
+range(apredict)
+range(atarget.test)
+apredict.int <- round(apredict)
+```
+
+```{r}
+sum(apredict.int==atarget.test)/length(apredict.int)
+```
+
 
