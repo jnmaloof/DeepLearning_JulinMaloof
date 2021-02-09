@@ -1,0 +1,371 @@
+---
+title: "Chapter 4"
+output: html_notebook
+---
+
+
+```{r}
+library(tidyverse)
+library(keras)
+use_condaenv("r-reticulate")
+```
+
+## 1
+1) In the book DO and dropout regularization are added to the IMDB review classification example.  Do these regularized models improve predictions of the test set?
+
+```{r}
+imdb <- dataset_imdb(num_words = 10000)
+c(c(train_data, train_labels), c(test_data, test_labels)) %<-% imdb
+
+vectorize_sequences <- function(sequences, dimension = 10000) {
+  # Create an all-zero matrix of shape (len(sequences), dimension)
+  results <- matrix(0, nrow = length(sequences), ncol = dimension)
+  for (i in 1:length(sequences))
+    # Sets specific indices of results[i] to 1s
+    results[i, sequences[[i]]] <- 1
+  results
+}
+
+# Our vectorized training data
+x_train <- vectorize_sequences(train_data)
+# Our vectorized test data
+x_test <- vectorize_sequences(test_data)
+
+# Our vectorized labels
+y_train <- as.numeric(train_labels)
+y_test <- as.numeric(test_labels)
+```
+
+```{r}
+val_indices <- 1:10000
+
+x_val <- x_train[val_indices,]
+partial_x_train <- x_train[-val_indices,]
+
+y_val <- y_train[val_indices]
+partial_y_train <- y_train[-val_indices]
+```
+
+
+
+```{r}
+model1 <- keras_model_sequential() %>% 
+  layer_dense(units = 16, activation = "relu", input_shape = c(10000)) %>% 
+  layer_dense(units = 16, activation = "relu") %>% 
+  layer_dense(units = 1, activation = "sigmoid")
+  
+model1 %>% compile(
+  optimizer = "rmsprop",
+  loss = "binary_crossentropy",
+  metrics = c("accuracy")
+)
+
+history1 <- model1 %>% fit(
+  partial_x_train,
+  partial_y_train,
+  epochs = 20,
+  batch_size = 512,
+  validation_data = list(x_val, y_val),
+  verbose=0
+)
+```
+
+```{r}
+plot(history1)
+```
+```{r}
+model1_final <- keras_model_sequential() %>% 
+  layer_dense(units = 16, activation = "relu", input_shape = c(10000)) %>% 
+  layer_dense(units = 16, activation = "relu") %>% 
+  layer_dense(units = 1, activation = "sigmoid")
+  
+model1_final %>% compile(
+  optimizer = "rmsprop",
+  loss = "binary_crossentropy",
+  metrics = c("accuracy")
+)
+
+model1_final %>% fit(
+  x_train,
+  y_train,
+  epochs = 5,
+  batch_size = 512,
+  verbose=0
+)
+
+evaluate(model1_final, x_test, y_test)
+```
+
+
+## DO
+
+
+```{r}
+modelDO <- keras_model_sequential() %>% 
+  layer_dense(units = 16, activation = "relu", input_shape = c(10000), kernel_regularizer = regularizer_DO(l=0.005)) %>% 
+  layer_dense(units = 16, activation = "relu", kernel_regularizer = regularizer_DO(l=0.005)) %>% 
+  layer_dense(units = 1, activation = "sigmoid")
+  
+modelDO %>% compile(
+  optimizer = "rmsprop",
+  loss = "binary_crossentropy",
+  metrics = c("accuracy")
+)
+
+historyDO <- modelDO %>% fit(
+  partial_x_train,
+  partial_y_train,
+  epochs = 20,
+  batch_size = 512,
+  validation_data = list(x_val, y_val),
+  verbose=0
+)
+
+plot(historyDO)
+```
+
+```{r}
+modelDO_final <- keras_model_sequential() %>% 
+  layer_dense(units = 16, activation = "relu", input_shape = c(10000), kernel_regularizer = regularizer_DO(l=0.005)) %>% 
+  layer_dense(units = 16, activation = "relu", kernel_regularizer = regularizer_DO(l=0.005)) %>% 
+  layer_dense(units = 1, activation = "sigmoid")
+  
+modelDO_final %>% compile(
+  optimizer = "rmsprop",
+  loss = "binary_crossentropy",
+  metrics = c("accuracy")
+)
+
+modelDO_final %>% fit(
+  x_train,
+  y_train,
+  epochs = 7,
+  batch_size = 512,
+  verbose=0
+)
+
+evaluate(modelDO_final, x_test, y_test)
+```
+
+
+## Dropout
+
+
+```{r}
+modelDO <- keras_model_sequential() %>% 
+  layer_dense(units = 16, activation = "relu", input_shape = c(10000)) %>% 
+  layer_dropout(rate=0.5) %>%
+  layer_dense(units = 16, activation = "relu") %>% 
+    layer_dropout(rate=0.5) %>%
+  layer_dense(units = 1, activation = "sigmoid")
+  
+modelDO %>% compile(
+  optimizer = "rmsprop",
+  loss = "binary_crossentropy",
+  metrics = c("accuracy")
+)
+
+historyDO <- modelDO %>% fit(
+  partial_x_train,
+  partial_y_train,
+  epochs = 20,
+  batch_size = 512,
+  validation_data = list(x_val, y_val),
+  verbose=0
+)
+
+plot(historyDO)
+```
+
+```{r}
+modelDO_final <- keras_model_sequential() %>% 
+  layer_dense(units = 16, activation = "relu", input_shape = c(10000)) %>% 
+  layer_dropout(rate=0.5) %>%
+  layer_dense(units = 16, activation = "relu") %>% 
+  layer_dropout(rate=0.5) %>%
+  layer_dense(units = 1, activation = "sigmoid")
+  
+modelDO_final %>% compile(
+  optimizer = "rmsprop",
+  loss = "binary_crossentropy",
+  metrics = c("accuracy")
+)
+
+modelDO_final %>% fit(
+  x_train,
+  y_train,
+  epochs = 5,
+  batch_size = 512,
+  verbose=0
+)
+
+evaluate(modelDO_final, x_test, y_test)
+```
+
+possibly better
+
+2) Try adding a regularization method to the OJ purchase prediction fit.  Does it help test set prediction accuracy?  Optional: try more than one method.
+
+```{r}
+library(ISLR)
+data(OJ)
+
+#because store is categorical we need to turn that into a series of dummy variables.
+
+store_cat <- OJ %>% select(StoreID) %>%
+  mutate(row=1:nrow(.),data=1) %>%
+  pivot_wider(id_cols = row, names_from=StoreID, values_from=data, values_fill=0, names_prefix="Store")
+
+
+OJ <- OJ %>% select(-StoreID, -STORE, -Store7) %>% cbind(store_cat)
+```
+
+### split into test and train and other formatting
+
+```{r}
+set.seed(111820)
+train <- sample(1:nrow(OJ), size = 800)
+oj.train <- OJ[train,]
+oj.test <- OJ[-train,]
+
+oj.train.label <- oj.train %>% select(Purchase) %>% mutate(Purchase=ifelse(Purchase=="CH", 0, 1)) %>% pull(Purchase)
+oj.test.label <- oj.test %>% select(Purchase) %>% mutate(Purchase=ifelse(Purchase=="CH", 0, 1)) %>% pull(Purchase)
+
+oj.train <- oj.train %>% select(-Purchase)
+oj.test <- oj.test %>% select(-Purchase)
+
+oj.mean <- apply(oj.train, 2, mean)
+oj.std <- apply(oj.test, 2, sd)
+
+oj.train <- scale(oj.train, center=oj.mean, scale=oj.std)
+oj.test <- scale(oj.test, center=oj.mean, scale=oj.std)
+
+set.seed(12312)
+val <- sample(1:nrow(oj.train), size = 100)
+
+oj.train.val <- oj.train[val,]
+oj.train.label.val <- oj.train.label[val]
+
+oj.train.part <- oj.train[-val,]
+oj.train.label.part <- oj.train.label[-val]
+
+```
+
+
+### set up and run the model!
+
+```{r}
+model <- keras_model_sequential() %>% 
+  layer_dense(units = 32, activation = "relu", input_shape = ncol(oj.train) ) %>% 
+  layer_dense(units = 32, activation = "relu") %>% 
+  layer_dense(units = 1, activation = "sigmoid")
+
+
+model %>% compile(
+  optimizer = "rmsprop",
+  loss = "binary_crossentropy",
+  metrics = c("accuracy")
+)
+
+system.time(history <- model %>% fit(
+  oj.train.part,
+  oj.train.label.part,
+  epochs = 100,
+  batch_size = 32,
+  validation_data = list(oj.train.val, oj.train.label.val),
+  verbose=0 # delete this if you want real-time plots
+))
+
+plot(history)
+```
+
+15 seems good, re do with 15 epochs and full training:
+
+```{r}
+model <- keras_model_sequential() %>% 
+  layer_dense(units = 32, activation = "relu", input_shape = ncol(oj.train) ) %>% 
+  layer_dense(units = 32, activation = "relu") %>% 
+  layer_dense(units = 1, activation = "sigmoid")
+
+
+model %>% compile(
+  optimizer = "rmsprop",
+  loss = "binary_crossentropy",
+  metrics = c("accuracy")
+)
+
+system.time( model %>% fit(
+  oj.train,
+  oj.train.label,
+  epochs = 15,
+  batch_size = 32,
+  verbose=0
+))
+```
+
+
+```{r}
+results <- model %>% evaluate(oj.test, oj.test.label)
+
+results
+```
+
+## OJ dropout
+
+
+```{r}
+model <- keras_model_sequential() %>% 
+  layer_dense(units = 32, activation = "relu", input_shape = ncol(oj.train) ) %>% 
+  layer_dropout(rate=0.5) %>%
+  layer_dense(units = 32, activation = "relu") %>% 
+  layer_dropout(rate=0.5) %>%
+  layer_dense(units = 1, activation = "sigmoid")
+
+
+model %>% compile(
+  optimizer = "rmsprop",
+  loss = "binary_crossentropy",
+  metrics = c("accuracy")
+)
+
+system.time(history <- model %>% fit(
+  oj.train.part,
+  oj.train.label.part,
+  epochs = 100,
+  batch_size = 32,
+  validation_data = list(oj.train.val, oj.train.label.val),
+  verbose=0 # delete this if you want real-time plots
+))
+
+plot(history)
+```
+
+maybe around 60?
+
+```{r}
+model <- keras_model_sequential() %>% 
+  layer_dense(units = 32, activation = "relu", input_shape = ncol(oj.train) ) %>% 
+  layer_dropout(rate=0.5) %>%
+  layer_dense(units = 32, activation = "relu") %>% 
+  layer_dropout(rate=0.5) %>%
+  layer_dense(units = 1, activation = "sigmoid")
+
+
+model %>% compile(
+  optimizer = "rmsprop",
+  loss = "binary_crossentropy",
+  metrics = c("accuracy")
+)
+
+system.time( model %>% fit(
+  oj.train,
+  oj.train.label,
+  epochs = 60,
+  batch_size = 32,
+  verbose=0
+))
+
+results <- model %>% evaluate(oj.test, oj.test.label)
+
+results
+```
