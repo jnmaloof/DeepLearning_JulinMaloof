@@ -1,0 +1,68 @@
+---
+title: "play with kernels"
+output: html_notebook
+---
+
+```{r}
+img <- matrix (c(rep(c(0,0,0,1,0,0,0,0,0),11),0),ncol=10)
+img
+```
+
+```{r}
+apply_kernel <- function(mat, kern) {
+  newmat <- matrix(NA,nrow=nrow(mat)-2, ncol=ncol(mat)-2)
+  for(i in 1:nrow(newmat)) {
+    for(j in 1:ncol(newmat)) {
+      smallmat <- mat[i:(i+2), j:(j+2)]
+      newmat[i,j] <- sum(smallmat * kern)
+    }
+  }
+  newmat
+}
+
+maxpool_2d <- function(mat) {
+  newmat <- matrix(NA, nrow=floor(nrow(mat)/2), ncol=floor(ncol(mat)/2))
+  for(i in 1:nrow(newmat)) {
+    for(j in 1:ncol(newmat)) {
+      oldmati <- (i-1)*2+1
+      oldmatj <-  (j-1)*2+1
+      smallmat <- mat[oldmati:(oldmati+1),oldmatj:(oldmatj+1)]
+      newmat[i,j] <- max(smallmat)
+    }
+  }
+  newmat
+}
+```
+
+```{r}
+kern <- matrix(c(2,0,0,
+                 0,2,0,
+                 0,0,2), ncol=3)
+                 
+(img2 <- apply_kernel(img, kern))
+
+(img3 <- maxpool_2d(img2))
+
+(img4 <- apply_kernel(img3, kern))
+
+(img5 <- maxpool_2d(img4))
+```
+
+
+what about the opposite filter?
+
+```{r}
+kern <- matrix(c(0,0,2,
+                 0,2,0,
+                 2,0,0), ncol=3)
+                 
+(img2 <- apply_kernel(img, kern))
+
+(img3 <- maxpool_2d(img2))
+
+(img4 <- apply_kernel(img3, kern))
+
+(img5 <- maxpool_2d(img4))
+```
+
+
