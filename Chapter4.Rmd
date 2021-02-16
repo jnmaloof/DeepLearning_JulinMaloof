@@ -11,7 +11,7 @@ use_condaenv("r-reticulate")
 ```
 
 ## 1
-1) In the book DO and dropout regularization are added to the IMDB review classification example.  Do these regularized models improve predictions of the test set?
+1) In the book L2 and dropout regularization are added to the IMDB review classification example.  Do these regularized models improve predictions of the test set?
 
 ```{r}
 imdb <- dataset_imdb(num_words = 10000)
@@ -102,7 +102,7 @@ evaluate(model1_final, x_test, y_test)
 
 ```{r}
 modelDO <- keras_model_sequential() %>% 
-  layer_dense(units = 16, activation = "relu", input_shape = c(10000), kernel_regularizer = regularizer_DO(l=0.005)) %>% 
+  layer_dense(units = 16, activation = "relu", input_shape = c(10000), kernel_regularizer = regularizer_l1(l=0.005)) %>% 
   layer_dense(units = 16, activation = "relu", kernel_regularizer = regularizer_DO(l=0.005)) %>% 
   layer_dense(units = 1, activation = "sigmoid")
   
