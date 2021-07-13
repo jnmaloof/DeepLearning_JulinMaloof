@@ -1,0 +1,108 @@
+---
+title: "6.2 recurrent neural networks"
+output: html_notebook
+---
+
+## R implementation of a simple RNN
+
+```{r, eval=FALSE}
+timesteps <- 100
+input_features <- 32
+output_features <- 64
+
+random_array <- function(dim) {
+  array(runif(prod(dim)), dim=dim)
+}
+
+inputs <- random_array(dim = c(timesteps, input_features))
+state_t <- rep_len(0, length=c(output_features))
+
+W <- random_array(dim=c(output_features, input_features))
+U <- random_array(dim = c(output_features, output_features))
+b <- random_array(dim=c(output_features, 1))
+
+output_sequence <- array(0, dim=c(timesteps, output_features))
+
+for(i in 1:nrow(inputs)) {
+  input_t <- inputs[i,]
+  output_t <- tanh(as.numeric(W %*% input_t) + (U %*% state_t) + b)
+  state_T <- output_t
+}
+```
+
+OK but W, U, and b would have to get updated also.
+
+## listing 6.22 prepare IMDB
+
+```{r}
+library(keras)
+use_condaenv("r-reticulate")
+
+max_features <- 10000  # Number of words to consider as features
+maxlen <- 500  # Cuts off texts after this many words (among the max_features most common words)
+batch_size <- 32
+
+cat("Loading data...\n")
+imdb <- dataset_imdb(num_words = max_features)
+c(c(input_train, y_train), c(input_test, y_test)) %<-% imdb 
+cat(length(input_train), "train sequences\n")
+cat(length(input_test), "test sequences")
+
+cat("Pad sequences (samples x time)\n")
+input_train <- pad_sequences(input_train, maxlen = maxlen)
+input_test <- pad_sequences(input_test, maxlen = maxlen)
+cat("input_train shape:", dim(input_train), "\n")
+cat("input_test shape:", dim(input_test), "\n")
+```
+
+## listing 6.23 Train the IMDB model
+
+```{r, echo=TRUE, results='hide'}
+model <- keras_model_sequential() %>%
+  layer_embedding(input_dim = max_features, output_dim = 32) %>%
+  layer_simple_rnn(units = 32) %>%
+  layer_dense(units = 1, activation = "sigmoid")
+
+model %>% compile(
+  optimizer = "rmsprop",
+  loss = "binary_crossentropy",
+  metrics = c("acc")
+)
+
+history <- model %>% fit(
+  input_train, y_train,
+  epochs = 10,
+  batch_size = 128,
+  validation_split = 0.2
+)
+```
+
+```{r}
+plot(history)
+```
+
+## LTSM layer
+
+```{r, echo=TRUE, results='hide'}
+model <- keras_model_sequential() %>% 
+  layer_embedding(input_dim = max_features, output_dim = 32) %>% 
+  layer_lstm(units = 32) %>% 
+  layer_dense(units = 1, activation = "sigmoid")
+
+model %>% compile(
+  optimizer = "rmsprop", 
+  loss = "binary_crossentropy", 
+  metrics = c("acc")
+)
+
+history <- model %>% fit(
+  input_train, y_train,
+  epochs = 10,
+  batch_size = 128,
+  validation_split = 0.2
+)
+```
+
+```{r}
+plot(history)
+```

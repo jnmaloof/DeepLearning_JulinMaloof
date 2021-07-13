@@ -1,0 +1,108 @@
+---
+title: "ChickenPox"
+author: "Julin Maloof"
+date: "7/12/2021"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+```
+
+
+The data consists of weekly chickenpox incident rates for every county in Hungary from 2005 to 2015
+
+The goal is to be able to predict chickenpox disease rates in the future
+
+The data set is at [UCI repository](https://archive.ics.uci.edu/ml/datasets/Hungarian+Chickenpox+Cases)
+
+Note that there are two data files.  `hungary_chickenpox.csv` has case counts per county.  `hungary_county_edges.csv` is an adjacency matrix indicating which counties abut one another, but I am not sure how to include this.
+
+Exercises:
+
+0. Do you want to center and scale?  If so don't forget to do it.
+
+1. plot the data in an informative way
+
+2. Because this is a small data set and we are just practicing we are not going to set up a test set, just training and validation.  Set up your generators or data so that training data is 2005-2012 and validation is 2013, 2014.
+
+3. Predict chickenpox case # in Budapest 2 weeks in the future.  Be sure to include a baseline model for comparison.  
+
+4. Recode the data so that you can make predicition for all counties 2 weeks in the future.  Be sure to include a baseline model for comparison.
+
+5. If you are getting good predictions, how good can you do at 1 month?  If predictions are poor maybe try going down to 1 week.
+
+Get the data
+```{r}
+if(!dir.exists("chickenpox")) {
+  dir.create("chickenpox")
+  download.file(url="https://archive.ics.uci.edu/ml/machine-learning-databases/00580/hungary_chickenpox.zip",
+  destfile="chickenpox/hungary_chickenpox.zip")
+  unzip("chickenpox/hungary_chickenpox.zip", exdir = "chickenpox")
+} 
+```
+
+plot it
+```{r}
+pox <- read_csv("chickenpox/hungary_chickenpox.csv")
+```
+
+```{r}
+head(pox)
+```
+
+```{r}
+pox <- pox %>% 
+  mutate(Date = lubridate::dmy(Date),
+         year = lubridate::year(Date),
+         week=lubridate::week(Date)) %>%
+  select(Date, week, year, everything())
+```
+
+```{r}
+pox %>% pivot_longer(-c(Date, week, year), names_to = "county") %>%
+  ggplot(aes(x=week, y=value, color=county)) +
+  geom_line() +
+  facet_wrap(~ year)
+  
+```
+
+scale and center.  Do each county separately.
+
+```{r}
+countymeans <- pox %>% 
+  filter(year < 2013) %>% 
+  summarize(across(.cols=c(-Date, -week, -year), mean)) %>%
+  as.numeric
+
+countysd <- pox %>% 
+    filter(year < 2013) %>% 
+  summarize(across(.cols=c(-Date, -week, -year), sd)) %>%
+  as.numeric()
+
+poxscale <- pox
+poxscale[,-1:-3] <- scale(pox[,-1:-3], center = countymeans, scale = countysd)
+```
+
+did it work?
+```{r}
+poxscale %>% 
+  filter(year < 2013) %>% 
+  summarize(across(.cols=c(-Date, -week, -year), mean)) 
+
+poxscale %>% 
+    filter(year < 2013) %>% 
+  summarize(across(.cols=c(-Date, -week, -year), sd))
+```
+yes
+
+
+Reformat for exercise 4:
+
+```{r}
+poxl <- poxscale %>% 
+  pivot_longer(-c(Date, week, year), names_to = "county", values_to = "cases") %>%
+  pivot_wider(id_cols = -county, names_from = county, values_from = county, values_fn = function(x) 1, values_fill = 0 )
+poxl 
+```
+
