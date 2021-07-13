@@ -37,3 +37,11 @@ vignettes/*.pdf
 
 # R Environment Variables
 .Renviron
+aclImdb
+0tIo
+glove*
+*h5
+vgg_filters
+jena_climate
+cats_and_dogs*
+catdog_filters
