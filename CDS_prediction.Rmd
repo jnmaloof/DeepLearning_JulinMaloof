@@ -1,0 +1,79 @@
+---
+title: "Code CDS"
+author: "Julin Maloof"
+date: "7/21/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(magrittr)
+library(Biostrings)
+library(GenomicRanges)
+library(rtracklayer)
+```
+
+
+## Intro
+
+Want to use ML to predict coding and non coding sequences
+
+First need to figure out how to code each base as coding or not
+
+## download and import files
+
+```{r}
+if (!dir.exists("AtSeqs")) {
+  dir.create("AtSeqs")
+  download.file("ftp://ftp.arabidopsis.org/home/tair/Maps/gbrowse_data/TAIR10/TAIR10_GFF3_genes.gff", "AtSeqs/TAIR10_GFF3_genes.gff")
+  download.file("ftp://ftp.arabidopsis.org/home/tair/Sequences/whole_chromosomes/TAIR10_chr1.fas", "AtSeqs/TAIR10_chr1.fas")
+}
+```
+
+```{r}
+gff <- import.gff("AtSeqs/TAIR10_GFF3_genes.gff")
+gff
+```
+
+```{r}
+Chr1 <- readDNAStringSet("AtSeqs/TAIR10_chr1.fas")
+```
+
+1 base per row
+```{r}
+chr1.tib <- as.matrix(Chr1) %>% t() %>%
+  as_tibble() %>%
+  rename_with(~ str_remove(.," .*")) %>%
+  mutate(pos=1:nrow(.))
+head(chr1.tib)
+```
+create gff for just the CDS
+```{r}
+gffCDS <- gff[gff$type=="CDS",]
+gffCDS
+```
+
+query the CDS
+```{r}
+# First create a query Granges, one per base
+chr1.query <- GRanges(seqnames = "Chr1", ranges=IRanges(start = chr1.tib$pos, width = 1))
+
+chr1.tib$CDS <- findOverlaps(chr1.query, gffCDS, select = "first", ignore.strand=TRUE) %>%
+  is.na() %>%
+  not() %>%
+  as.integer()
+```
+
+first 10 coding bases:
+```{r}
+chr1.tib %>% filter(CDS==1) %>%
+  extract(1:10,)
+```
+```{r}
+gffCDS
+```
+
