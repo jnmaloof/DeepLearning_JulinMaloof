@@ -27,6 +27,11 @@ First need to figure out how to code each base as coding or not
 ## download and import files
 
 ```{r}
+timestamp()
+```
+
+
+```{r}
 if (!dir.exists("AtSeqs")) {
   dir.create("AtSeqs")
   download.file("ftp://ftp.arabidopsis.org/home/tair/Maps/gbrowse_data/TAIR10/TAIR10_GFF3_genes.gff", "AtSeqs/TAIR10_GFF3_genes.gff")
@@ -68,6 +73,11 @@ chr1.tib$CDS <- findOverlaps(chr1.query, gffCDS, select = "first", ignore.strand
   as.integer()
 ```
 
+```{r}
+timestamp()
+```
+
+
 first 10 coding bases:
 ```{r}
 chr1.tib %>% filter(CDS==1) %>%
@@ -76,4 +86,5 @@ chr1.tib %>% filter(CDS==1) %>%
 ```{r}
 gffCDS
 ```
+
 
