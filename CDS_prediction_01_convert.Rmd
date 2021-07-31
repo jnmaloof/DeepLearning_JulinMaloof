@@ -77,14 +77,42 @@ chr1.tib$CDS <- findOverlaps(chr1.query, gffCDS, select = "first", ignore.strand
 timestamp()
 ```
 
+```{r}
+chr1.tib
+```
+
 
 first 10 coding bases:
 ```{r}
 chr1.tib %>% filter(CDS==1) %>%
   extract(1:10,)
 ```
+
 ```{r}
-gffCDS
+rm(chr1.query, gff, Chr1, gffCDS)
+gc()
 ```
 
+
+### one hot encode it
+
+takes ~ 2 minutes
+```{r}
+system.time(
+  chr1.1_hot <- chr1.tib %>%
+    mutate(Chr1=ifelse(Chr1 %in% c("C", "A", "G", "T"), Chr1, "N")) %>% # 50% faster than str_replace
+
+    pivot_wider(values_from = Chr1, 
+                names_from = Chr1, 
+                values_fn = function(x) 1L, 
+                values_fill = 0L)
+)
+
+head(chr1.1_hot)
+```
+
+~ 90 seconds
+```{r}
+system.time(write_csv(chr1.1_hot, file="AtSeqs/chr1_1hot.csv.gz"))
+```
 
