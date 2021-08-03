@@ -57,16 +57,17 @@ generator <- function(data, window, delay=0, min_index, max_index,
 }
 ```
 
+
 ```{r}
 nrow(chr1) # 30427671
-lookback <- 400
+window <- 150
 step <- 1
 delay <- 0
-batch_size <- 128
+batch_size <- 512
 
 train_gen <- generator(
-  data,
-  lookback = lookback,
+  chr1,
+  window = window,
   delay = delay,
   min_index = 1,
   max_index = 5000000,
@@ -76,18 +77,18 @@ train_gen <- generator(
 )
 
 val_gen = generator(
-  data,
-  lookback = lookback,
+  chr1,
+  window = window,
   delay = delay,
   min_index = 5000001,
-  max_index = 6000000,
+  max_index = 5100000,
   step = step,
   batch_size = batch_size
 )
 
 test_gen <- generator(
-  data,
-  lookback = lookback,
+  chr1,
+  window = window,
   delay = delay,
   min_index = 6000001,
   max_index = 7000000,
@@ -97,9 +98,12 @@ test_gen <- generator(
 
 # This is how many steps to draw from `val_gen`
 # in order to see the whole validation set:
-val_steps <- (6000000 - 5000001 - lookback) / batch_size
+val_steps <- (5100000 - 5000001 - window) / batch_size
 
   # This is how many steps to draw from `test_gen`
 # in order to see the whole test set:
-test_steps <- (7000000 - 6000001 - lookback) / batch_size
+test_steps <- (7000000 - 6000001 - window) / batch_size
 ```
+
+
+
