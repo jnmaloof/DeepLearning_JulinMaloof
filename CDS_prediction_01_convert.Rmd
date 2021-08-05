@@ -58,7 +58,7 @@ head(chr1.tib)
 ```
 create gff for just the CDS
 ```{r}
-gffCDS <- gff[gff$type=="CDS",]
+gffCDS <- gff[gff$type=="CDS" & strand(gff)=="+",]
 gffCDS
 ```
 
@@ -78,7 +78,7 @@ timestamp()
 ```
 
 ```{r}
-chr1.tib
+head(chr1.tib)
 ```
 
 
@@ -110,9 +110,13 @@ system.time(
 
 head(chr1.1_hot)
 ```
+### write and move to s3
 
 ~ 90 seconds
 ```{r}
 system.time(write_csv(chr1.1_hot, file="AtSeqs/chr1_1hot.csv.gz"))
+```
+```{bash}
+aws s3 cp AtSeqs/chr1_1hot.csv.gz s3://bis180ldata/julinmisc/chr1_1hot_plus_strand.csv.gz
 ```
 
