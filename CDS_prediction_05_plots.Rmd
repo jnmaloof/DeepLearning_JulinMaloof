@@ -1,0 +1,110 @@
+---
+title: "CDS Prediction Plots"
+author: "Julin Maloof"
+date: "8/13/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(rtracklayer)
+library(keras)
+use_condaenv("r-reticulate")
+```
+
+```{r}
+load("/Volumes/GoogleDrive/My Drive/CDS_prediction_models/CDS_predictions_bidirectional_300_GRU_16_8_150epochs.Rdata")
+pred.out.call <- ifelse(pred.out[,1] < 0.5, 0, 1)
+```
+
+start and end of predictions:
+```{r}
+#starts at?
+start <- 6000001+300
+end <- start + length(pred.out) -1
+```
+
+## accuracy
+
+expect 92%, make sure that we have the alignment correct:
+
+```{r}
+{mean(pred.out.call==onehot$CDS) * 100} %>% round(2)
+```
+
+## confusion matrix
+
+load 1 hot
+
+```{r}
+onehot <- read_csv("AtSeqs/chr1_1hot_plus_strand.csv.gz")
+onehot <- onehot[start:end,]
+```
+
+```{r}
+table(obs=onehot$CDS, pred=pred.out.call)
+```
+
+```{r}
+table(obs=onehot$CDS, pred=pred.out.call) %>%
+  magrittr::divide_by(length(pred.out.call)/100) %>%
+  round(2)
+```
+
+## simple plot
+
+```{r}
+plot.tib <- tibble(pos=onehot$pos,
+                   pos2=1:length(pred.out.call),
+                   obs=onehot$CDS*-1, # for better plotting
+                   call=pred.out.call,
+                   prob=pred.out )
+```
+
+```{r}
+plot.tib %>% filter(row_number()<5000, row_number() > 4700) %>%
+  ggplot(aes(x=pos)) +
+  geom_ribbon(aes(ymin=obs), ymax=0, fill="blue") +
+  geom_ribbon(aes(ymax=call), ymin=0, fill="red")
+```
+```{r, fig.height=12, fig.width=8}
+plot.tib %>% filter(row_number() < 200000) %>%
+  mutate(group=as.character(pos2 %/% 10000),
+         pos3= pos2 %% 10000) %>%
+  ggplot(aes(x=pos3)) +
+  geom_ribbon(aes(ymin=obs), ymax=0, fill="blue") +
+  geom_ribbon(aes(ymax=call), ymin=0, fill="red") +
+  facet_wrap(~group, ncol=1, strip.position = "right")
+```
+
+## Convert to bed
+
+```{r}
+bed <- tibble(chr=NA, start=NA, end=NA)
+
+CDS <- FALSE
+for(i in 1:length(pred.out.call)) {
+  if(!CDS) {
+    if(pred.out.call[i] == 1) {
+      start <- i-1L + 6000300L # bed is 0 indexed
+      CDS <- TRUE
+      next()
+    } 
+  } else { # previous state is CDS
+    if(pred.out.call[i] == 0) { # switched state
+      CDS <- FALSE
+      bed <- rbind(bed, list("Chr1", start, i + 6000300L)) # not -1 because end not included
+    }
+  }
+}
+
+bed <- bed[-1,]
+head(bed)
+tail(bed)
+write_tsv(bed, file="AtSeqs/CDSpred.bed", col_names = FALSE)
+```
+
