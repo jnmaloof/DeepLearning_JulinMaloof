@@ -142,6 +142,6 @@ system.time(write_csv(chr1.1_hot, file="AtSeqs/chr1_1hot_both_strands.csv.gz"))
 ```
 
 ```{bash}
-aws s3 cp AtSeqs/chr1_1hot.csv.gz s3://bis180ldata/julinmisc/chr1_1hot_both_strands.csv.gz
+aws s3 cp AtSeqs/chr1_1hot_both_strands.csv.gz s3://bis180ldata/julinmisc/chr1_1hot_both_strands.csv.gz
 ```
 
