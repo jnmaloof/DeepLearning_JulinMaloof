@@ -1,0 +1,147 @@
+---
+title: "Code CDS"
+author: "Julin Maloof"
+date: "7/21/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(magrittr)
+library(Biostrings)
+library(GenomicRanges)
+library(rtracklayer)
+```
+
+
+## Intro
+
+Want to use ML to predict coding and non coding sequences
+
+First need to figure out how to code each base as coding or not
+
+## download and import files
+
+```{r}
+timestamp()
+```
+
+
+```{r}
+if (!dir.exists("AtSeqs")) {
+  dir.create("AtSeqs")
+  download.file("ftp://ftp.arabidopsis.org/home/tair/Maps/gbrowse_data/TAIR10/TAIR10_GFF3_genes.gff", "AtSeqs/TAIR10_GFF3_genes.gff")
+  download.file("ftp://ftp.arabidopsis.org/home/tair/Sequences/whole_chromosomes/TAIR10_chr1.fas", "AtSeqs/TAIR10_chr1.fas")
+}
+```
+
+```{r}
+gff <- import.gff("AtSeqs/TAIR10_GFF3_genes.gff")
+gff
+```
+
+```{r}
+Chr1 <- readDNAStringSet("AtSeqs/TAIR10_chr1.fas")
+```
+
+1 base per row
+```{r}
+chr1.tib <- as.matrix(Chr1) %>% t() %>%
+  as_tibble() %>%
+  rename_with(~ str_remove(.," .*")) %>%
+  mutate(pos=1:nrow(.))
+head(chr1.tib)
+```
+
+## plus strand
+
+create gff for just the CDS
+```{r}
+gffCDSplus <- gff[gff$type=="CDS" & strand(gff)=="+",]
+gffCDSplus
+```
+
+query the CDS
+```{r}
+# First create a query Granges, one per base
+chr1.query <- GRanges(seqnames = "Chr1", ranges=IRanges(start = chr1.tib$pos, width = 1))
+
+chr1.tib$CDSplus <- findOverlaps(chr1.query, gffCDSplus, select = "first", ignore.strand=TRUE) %>%
+  is.na() %>%
+  not() %>%
+  as.integer()
+```
+
+## minus strand
+create gff for just the CDS
+```{r}
+gffCDSminus <- gff[gff$type=="CDS" & strand(gff)=="-",]
+gffCDSminus
+```
+
+query the CDS
+```{r}
+# First create a query Granges, one per base
+chr1.query <- GRanges(seqnames = "Chr1", ranges=IRanges(start = chr1.tib$pos, width = 1))
+
+chr1.tib$CDSminus <- findOverlaps(chr1.query, gffCDSminus, select = "first", ignore.strand=TRUE) %>%
+  is.na() %>%
+  not() %>%
+  as.integer()
+```
+
+## both and neither
+
+```{r}
+chr1.tib <-chr1.tib  %>% mutate(
+  CDSboth = CDSplus*CDSminus,
+  CDSneither = as.integer((CDSplus==0 & CDSminus==0))
+)
+```
+
+## take a look
+
+```{r}
+head(chr1.tib)
+colMeans(chr1.tib[,-1:-2]) %>% round(5)
+```
+
+
+
+```{r}
+rm(chr1.query, gff, Chr1, gffCDSplus, gffCDSminus)
+gc()
+```
+
+
+### one hot encode it
+
+takes ~ 2 minutes
+```{r}
+system.time(
+  chr1.1_hot <- chr1.tib %>%
+    mutate(Chr1=ifelse(Chr1 %in% c("C", "A", "G", "T"), Chr1, "N")) %>% # 50% faster than str_replace
+
+    pivot_wider(values_from = Chr1, 
+                names_from = Chr1, 
+                values_fn = function(x) 1L, 
+                values_fill = 0L)
+)
+
+head(chr1.1_hot)
+```
+### write and move to s3
+
+~ 90 seconds
+```{r}
+system.time(write_csv(chr1.1_hot, file="AtSeqs/chr1_1hot_both_strands.csv.gz"))
+```
+
+```{bash}
+aws s3 cp AtSeqs/chr1_1hot.csv.gz s3://bis180ldata/julinmisc/chr1_1hot_both_strands.csv.gz
+```
+
