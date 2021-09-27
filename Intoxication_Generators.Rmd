@@ -1,0 +1,216 @@
+---
+title: "Intoxication Generators"
+author: "Julin Maloof"
+date: "7/21/2021"
+output: html_document
+---
+
+# DON'T USE THIS.  SEE INTOXICATION_GENERATORS_2
+
+```{r}
+library(tidyverse)
+library(keras)
+```
+
+ Data was originally collected from 19 participants, but the TAC readings of 6 participants were deemed unusable by SCRAM [1]. The data included is from the remaining 13 participants.
+   
+    Accelerometer data was collected from smartphones at a sampling rate of 40Hz (file: all_accelerometer_data_pids_13.csv). The file contains 5 columns: a timestamp, a participant ID, and a sample from each axis of the accelerometer. Data was collected from a mix of 11 iPhones and 2 Android phones as noted in phone_types.csv. TAC data was collected using SCRAM [2] ankle bracelets and was collected at 30 minute intervals. The raw TAC readings are in the raw_tac directory. TAC readings which are more readily usable for processing are in clean_tac directory and have two columns: a timestamp and TAC reading. The cleaned TAC readings: (1) were processed with a zero-phase low-pass filter to smooth noise without shifting phase; (2) were shifted backwards by 45 minutes so the labels more closely match the true intoxication of the participant (since alcohol takes about 45 minutes to exit through the skin.) Please see the above referenced study for more details on how the data was processed (http://ceur-ws.org/Vol-2429/paper6.pdf).
+
+    1 - https://www.scramsystems.com/
+    2 - J. Robert Zettl. The determination of blood alcohol concentration by transdermal measurement. https://www.scramsystems.com/images/uploads/general/research/the-determination-of-blood-alcohol-concentrationby-transdermal-measurement.pdf, 2002.
+
+5. Number of Instances:
+    Accelerometer readings: 14,057,567
+    TAC readings: 715
+    Participants: 13
+
+6. Number of Attributes:
+    - Time series: 3 axes of accelerometer data (columns x, y, z in all_accelerometer_data_pids_13.csv)
+    - Static: 1 phone-type feature (in phone_types.csv)
+    - Target: 1 time series of TAC for each of the 13 participants (in clean_tac directory).
+
+7. For Each Attribute:
+    (Main)
+    all_accelerometer_data_pids_13.csv:
+        time: integer, unix timestamp, milliseconds
+        pid: symbolic, 13 categories listed in pids.txt 
+        x: continuous, time-series
+        y: continuous, time-series
+        z: continuous, time-series
+    clean_tac/*.csv:
+        timestamp: integer, unix timestamp, seconds
+        TAC_Reading: continuous, time-series
+    phone_type.csv:
+        pid: symbolic, 13 categories listed in pids.txt 
+        phonetype: symbolic, 2 categories (iPhone, Android)
+    
+    (Other)
+    raw/*.xlsx:
+        TAC Level: continuous, time-series
+        IR Voltage: continuous, time-series
+        Temperature: continuous, time-series
+        Time: datetime
+        Date: datetime
+
+8. Missing Attribute Values:
+None
+
+9. Target Distribution:
+    TAC is measured in g/dl where 0.08 is the legal limit for intoxication while driving
+    Mean TAC: 0.065 +/- 0.182
+    Max TAC: 0.443
+    TAC Inner Quartiles: 0.002, 0.029, 0.092
+    Mean Time-to-last-drink: 16.1 +/- 6.9 hrs
+
+## Read the data
+
+### TAC
+```{r}
+tac_dir <- "intox_data/clean_tac/"
+tac <- tibble(file=dir(path=tac_dir, pattern="csv$"))
+tac <- tac %>% mutate(data=map(file, ~ read_csv(file.path(tac_dir, .x)))) %>% 
+  unnest(data) %>%
+  mutate(timestamp = timestamp * 1000,
+         pid=str_remove(file, "_.*")) %>% # get units to match accelerometer data
+  select(timestamp, pid, TAC_Reading) %>%
+  arrange(pid, timestamp)
+tac
+```
+
+Note that we could convert the timestamp if we wanted to, but I don't think we do
+```{r}
+as.POSIXlt(tac$timestamp[1:10]/1000, origin="1970-01-01")
+```
+
+### acceleromator
+```{r}
+accel <- read_csv("intox_data/all_accelerometer_data_pids_13.csv") %>%
+  arrange(pid, time) %>%
+  filter(time > 0) # git rid of a couple of 0 readings
+head(accel, 100)
+```
+
+## Generator:
+
+Idea: TAC is the target.  For each item in TAC, retrieve N preceding readings from accelerometer.
+
+```{r}
+generator <- function(data_t, data_a, window, delay=0, min_index, max_index, #min and max index refer to data_t
+                                                                   # window, step, and delay refer to data_a    
+                      shuffle = FALSE, batch_size = 32, step = 1) { 
+  if (is.null(max_index))
+    max_index <- nrow(data_t) 
+  i <- min_index
+  
+  function() {
+    if (shuffle) {
+      rows <- sample(c((min_index):max_index), size = batch_size)
+    } else {
+      if (i + batch_size >= max_index)
+        i <<- min_index
+      rows <- c(i:min(i+batch_size, max_index))
+      i <<- i + length(rows)
+    }
+    
+    samples <- array(0, dim = c(length(rows), 
+                                window / step,
+                                3)) # x, y, z
+    targets <- array(0, dim = c(length(rows)))
+                     
+    for (j in 1:length(rows)) {
+      this_row <- rows[j]
+      this_pid <- data_t$pid[this_row]
+      this_end_time <- data_t$timestamp[this_row]
+      
+      samples[j,,] <- data_a %>%
+        filter(pid==this_pid, 
+               time + delay <= this_end_time,
+               (row_number(desc(time)) %% step ) == 0) %>% # filter for step size
+        filter(rank(desc(time)) >= window) %>%
+        select(x, y, x)
+      
+      targets[[j]] <- data_t[this_row, 3]
+    }
+    
+    list(samples, targets)
+  }
+}
+```
+
+```{r}
+nrow(tac) # 715
+window <- 10000
+step <- 1
+delay <- 0
+batch_size <- 8
+data_t <- tac
+data_a <- accel
+min_index <- 1
+max_index <- 3
+
+train_gen <- generator(
+  data_t = tac, data_a = accel,
+  window = window,
+  delay = delay,
+  min_index = 1,
+  max_index = 3,
+  shuffle = FALSE,
+  step = step, 
+  batch_size = batch_size
+)
+```
+
+
+```{r}
+test <- train_gen()
+str(test)
+```
+problem: times do not match up.  need to filter?
+
+```{r}
+as.POSIXlt(tac$timestamp[1:10]/1000, origin="1970-01-01")
+as.POSIXlt(accel$time[1:10]/1000, origin="1970-01-01")
+
+```
+
+```{r}
+tac %>% group_by(pid) %>%
+  summarize(first=as.POSIXlt(min(timestamp)/1000, origin="1970-01-01"),
+            last=as.POSIXlt(max(timestamp)/1000, origin="1970-01-01"))
+```
+
+```{r}
+accel %>% group_by(pid) %>%
+  summarize(first=as.POSIXlt(min(time)/1000, origin="1970-01-01"),
+            last=as.POSIXlt(max(time)/1000, origin="1970-01-01"))
+```
+
+```{r}
+val_gen = generator(
+  chr1,
+  window = window,
+  delay = delay,
+  min_index = 5000001,
+  max_index = 5100000,
+  step = step,
+  batch_size = batch_size
+)
+
+test_gen <- generator(
+  chr1,
+  window = window,
+  delay = delay,
+  min_index = 6000001,
+  max_index = 7000000,
+  step = step,
+  batch_size = batch_size
+)
+
+# This is how many steps to draw from `val_gen`
+# in order to see the whole validation set:
+val_steps <- (5100000 - 5000001 - window) / batch_size
+
+  # This is how many steps to draw from `test_gen`
+# in order to see the whole test set:
+test_steps <- (7000000 - 6000001 - window) / batch_size
+```
