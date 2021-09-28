@@ -186,7 +186,7 @@ evaluate_naive_method()
 ```
 note: this is in standardized units
 
-## Simple cNN
+## Simple dense network
 
 ```{r, echo=TRUE, results='hide'}
 

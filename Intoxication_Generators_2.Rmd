@@ -8,6 +8,7 @@ output: html_document
 ```{r}
 library(tidyverse)
 library(keras)
+use_condaenv("r-reticulate")
 ```
 
 Data was originally collected from 19 participants, but the TAC readings of 6 participants were deemed unusable by SCRAM [1]. The data included is from the remaining 13 participants.
@@ -124,8 +125,8 @@ tac %>% mutate(realtime=as.POSIXct(timestamp, origin="1970-01-01")) %>%
 ```
 
 ```{r}
-tac %>% mutate(realtime=as.POSIXct(timestamp, origin="1970-01-01")) %>%
-  ggplot(aes(x=realtime, y=TAC_Reading)) +
+tac %>% mutate(ET=as.POSIXct(timestamp, origin="1970-01-01", tz = "US/Eastern")) %>%
+  ggplot(aes(x=ET, y=TAC_Reading)) +
   geom_line() +
   facet_wrap(~pid, ncol=3) +
   theme(axis.text.x = element_text(angle=45, hjust = 1))
@@ -183,10 +184,10 @@ generator <- function(data, lookback, delay, min_index, max_index,
 ```
 
 ```{r}
-lookback <- 6000 # 150 seconds
+lookback <- 24000 # 600 seconds
 step <- 2 # 20 observations per second
 delay <- 0
-batch_size <- 32
+batch_size <- 128
 
 train_gen <- generator(
   data = combined,
@@ -222,10 +223,43 @@ test_gen <- generator(
 )
 
 # Unrealistic to look at the whole validation or test sets; look at 10000
-val_steps <- (10000) / batch_size
+val_steps <- (1000) / batch_size
 
 # This is how many steps to draw from `test_gen`
 # in order to see the whole test set:
 test_steps <- (10000) / batch_size
 ```
 
+## Does this work?
+
+## Simple dense network
+
+```{r, echo=TRUE}
+
+set.seed(123)
+
+model <- keras_model_sequential() %>% 
+  layer_flatten(input_shape = c(lookback / step, 3)) %>% 
+  layer_dense(units = 32, activation = "relu") %>% 
+  layer_dense(units = 1, activation = "sigmoid")
+
+model %>% compile(
+  optimizer = optimizer_rmsprop(),
+  loss = "binary_crossentropy",
+  metrics = "accuracy"
+)
+
+history <- model %>% fit_generator(
+  train_gen,
+  steps_per_epoch = 50,
+  epochs = 20,
+  validation_data = val_gen,
+  validation_steps = val_steps
+)
+```
+
+Let's display the loss curves for validation and training:
+
+```{r}
+plot(history)
+```
