@@ -263,3 +263,26 @@ Let's display the loss curves for validation and training:
 ```{r}
 plot(history)
 ```
+
+## simple RNN
+
+
+```{r echo=TRUE, results='hide'}
+model <- keras_model_sequential() %>% 
+  layer_gru(units = 32, input_shape = list(NULL, 3)) %>% 
+  layer_dense(units = 1, activation = "sigmoid")
+
+model %>% compile(
+  optimizer = optimizer_rmsprop(),
+  loss = "binary_crossentropy",
+  metrics = "accuracy"
+)
+
+history <- model %>% fit_generator(
+  train_gen,
+  steps_per_epoch = 50,
+  epochs = 20,
+  validation_data = val_gen,
+  validation_steps = val_steps
+)
+```
