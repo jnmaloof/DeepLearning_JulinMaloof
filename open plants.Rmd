@@ -10,8 +10,15 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ```{r}
+reticulate::conda_install("pandas", envname = "r-reticulate")
+```
+
+
+```{r}
 library(tidyverse)
 library(jsonlite)
+library(keras)
+use_condaenv("r-reticulate")
 ```
 
 
@@ -58,6 +65,9 @@ keep <- info %>% group_by(eppo, growth_condition) %>%
 
 keep
 ```
+```{r}
+getwd()
+```
 
 ```{r}
 info.sm <- info %>%
@@ -66,14 +76,7 @@ info.sm <- info %>%
   mutate(group=cut(percent_rank(row_number()),
                    breaks=c(-1, 0.8, 0.9, 1),
                    labels=c("train", "validate", "test")),
-         file.path=file.path(str_c(
-           "OPPD-master-DATA-images_plants-",
-           eppo),
-           filename)
-         ) %>%
-  ungroup() %>%
-  nest(y=c(eppo, growth_condition)) 
-  
+         file.path=file.path(getwd(), "open_plants", "images", eppo, filename)) 
 head(info.sm)
 ```
 
@@ -102,19 +105,49 @@ for (z in zip_files) {
                                "images", 
                                str_remove(basename(z),".zip")), 
           junkpaths = TRUE)
-}}
+  }}
 ```
 
-```{r}
-
-```
 
 
 ```{r}
-flow_images_from_dataframe(info.sm,
-                           directory = "open_plants/image",
-                           )
+train_gen <- flow_images_from_dataframe(
+  {info.sm %>% filter(group=="train") %>% as.data.frame()},
+  directory = NULL,
+  x_col="file.path",
+  class_mode = "multi_output",
+  target_size = c(128,128),
+  generator = image_data_generator(rescale = 1/255),
+  y_col=list("eppo", "growth_condition") # Can't be named list, apparently
+)
+
+test_gen <- flow_images_from_dataframe(
+  {info.sm %>% filter(group=="test") %>% as.data.frame()},
+  directory = NULL,
+  x_col="file.path",
+  class_mode = "multi_output",
+  target_size = c(128,128),
+  generator = image_data_generator(rescale = 1/255),
+  y_col=list("eppo", "growth_condition") # Can't be named list, apparently
+)
+
+
+val_gen <- flow_images_from_dataframe(
+  {info.sm %>% filter(group=="validate") %>% as.data.frame()},
+  directory = NULL,
+  x_col="file.path",
+  class_mode = "multi_output",
+  target_size = c(128,128),
+  generator = image_data_generator(rescale = 1/255),
+  y_col=list("eppo", "growth_condition") # Can't be named list, apparently
+)
 ```
+
+```{r}
+test <- generator_next(train_gen)
+str(test)
+```
+
 
 
 
