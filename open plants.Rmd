@@ -41,24 +41,79 @@ info %>% group_by(eppo, growth_condition) %>%
   summarize(min_count=min(count)) %>%
   arrange(min_count)
 
+info %>% group_by(eppo, growth_condition) %>%
+  summarize(count=n()) %>%
+  group_by(eppo) %>%
+  summarize(min_count=min(count)) %>%
+  filter(min_count > 99) %>%
+  arrange(eppo)
+
 keep <- info %>% group_by(eppo, growth_condition) %>%
   summarize(count=n()) %>%
   group_by(eppo) %>%
   summarize(min_count=min(count)) %>%
   filter(min_count > 99) %>%
+  filter(row_number()<=10) %>%
   pull(eppo)
+
+keep
 ```
 
 ```{r}
 info.sm <- info %>%
-  filter(eppo %in% keep) %>%
+  filter(eppo %in% keep[1:6]) %>%
   group_by(eppo, growth_condition) %>%
   mutate(group=cut(percent_rank(row_number()),
                    breaks=c(-1, 0.8, 0.9, 1),
-                   labels=c("train", "validate", "test"))
-  )
+                   labels=c("train", "validate", "test")),
+         file.path=file.path(str_c(
+           "OPPD-master-DATA-images_plants-",
+           eppo),
+           filename)
+         ) %>%
+  ungroup() %>%
+  nest(y=c(eppo, growth_condition)) 
   
 head(info.sm)
+```
+
+Download data
+```{r}
+for(k in keep) {
+  url <- str_c("https://gitlab.au.dk/AUENG-Vision/OPPD/-/archive/master/OPPD-master.zip?path=DATA/images_plants/",k)
+  destfile <- file.path("open_plants", "images", str_c(k,".zip"))
+  if(!file.exists(destfile)) {
+    print(k)
+    curl::curl_download(url, destfile, quiet=FALSE )
+  }
+}
+```
+
+
+```{r}
+zip_files <- dir(file.path("open_plants", "images"), pattern=".zip", full.names = TRUE)
+for (z in zip_files) {
+  if(!dir.exists(file.path("open_plants", 
+                           "images", 
+                           str_c("OPPD-master-DATA-images_plants-",
+                                 str_remove(basename(z),".zip"))))) {
+    print(z)
+    unzip(z, exdir = file.path("open_plants", 
+                               "images", 
+                               str_remove(basename(z),".zip")), 
+          junkpaths = TRUE)
+}}
+```
+
+```{r}
+
+```
+
+
+```{r}
+flow_images_from_dataframe(info.sm,
+                           directory = "open_plants/image",
+                           )
 ```
 
 
