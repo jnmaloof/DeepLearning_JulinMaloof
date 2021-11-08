@@ -75,8 +75,17 @@ info.sm <- info %>%
   group_by(eppo, growth_condition) %>%
   mutate(group=cut(percent_rank(row_number()),
                    breaks=c(-1, 0.8, 0.9, 1),
-                   labels=c("train", "validate", "test")),
-         file.path=file.path(getwd(), "open_plants", "images", eppo, filename)) 
+                   labels=c("train", "validate", "test"))) %>%
+  ungroup() %>%
+  mutate(file.path=file.path(getwd(), 
+                             "open_plants", 
+                             "images", 
+                             eppo, 
+                             filename)) %>% 
+  mutate(eppo1 = as.integer(as.factor(eppo)) -1,
+         gc1 = as.integer(as.factor(growth_condition))-1)
+
+
 head(info.sm)
 ```
 
@@ -85,7 +94,7 @@ Download data
 for(k in keep) {
   url <- str_c("https://gitlab.au.dk/AUENG-Vision/OPPD/-/archive/master/OPPD-master.zip?path=DATA/images_plants/",k)
   destfile <- file.path("open_plants", "images", str_c(k,".zip"))
-  if(!file.exists(destfile)) {
+  if((!file.exists(destfile) & !dir.exists(file.path("open_plants", "images", k)))  ){
     print(k)
     curl::curl_download(url, destfile, quiet=FALSE )
   }
@@ -98,8 +107,7 @@ zip_files <- dir(file.path("open_plants", "images"), pattern=".zip", full.names 
 for (z in zip_files) {
   if(!dir.exists(file.path("open_plants", 
                            "images", 
-                           str_c("OPPD-master-DATA-images_plants-",
-                                 str_remove(basename(z),".zip"))))) {
+                           str_remove(basename(z),".zip")))) {
     print(z)
     unzip(z, exdir = file.path("open_plants", 
                                "images", 
@@ -107,7 +115,6 @@ for (z in zip_files) {
           junkpaths = TRUE)
   }}
 ```
-
 
 
 ```{r}
@@ -118,7 +125,7 @@ train_gen <- flow_images_from_dataframe(
   class_mode = "multi_output",
   target_size = c(128,128),
   generator = image_data_generator(rescale = 1/255),
-  y_col=list("eppo", "growth_condition") # Can't be named list, apparently
+  y_col=list("eppo1", "gc1") # Can't be named list, apparently
 )
 
 test_gen <- flow_images_from_dataframe(
@@ -128,7 +135,7 @@ test_gen <- flow_images_from_dataframe(
   class_mode = "multi_output",
   target_size = c(128,128),
   generator = image_data_generator(rescale = 1/255),
-  y_col=list("eppo", "growth_condition") # Can't be named list, apparently
+  y_col=list("eppo1", "gc1") # Can't be named list, apparently
 )
 
 
@@ -139,14 +146,13 @@ val_gen <- flow_images_from_dataframe(
   class_mode = "multi_output",
   target_size = c(128,128),
   generator = image_data_generator(rescale = 1/255),
-  y_col=list("eppo", "growth_condition") # Can't be named list, apparently
+  y_col=list("eppo1", "gc1") # Can't be named list, apparently
 )
-```
 
-```{r}
-test <- generator_next(train_gen)
+test <- generator_next(val_gen)
 str(test)
 ```
+
 
 
 
