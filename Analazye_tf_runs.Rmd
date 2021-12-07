@@ -1,0 +1,43 @@
+---
+title: "Analyze_tfruns"
+author: "Julin Maloof"
+date: "12/7/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(keras)
+library(tfruns)
+library(tidyverse)
+```
+
+```{r}
+options(tfruns.runs_dir = "cats_dogs_tfruns_results/runs")
+```
+
+```{r}
+View(ls_runs())
+```
+
+```{r}
+view_run()
+```
+
+```{r}
+compare_runs()
+```
+
+```{r}
+runsdata <- ls_runs()
+head(runsdata)
+```
+
+somehow my flags aren't there, but I can recreate those... 
+```{r}
+
+```
+
