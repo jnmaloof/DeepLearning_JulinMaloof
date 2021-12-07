@@ -1,0 +1,97 @@
+---
+title: "7.2_TryingTensorBoard"
+author: "Julin Maloof"
+date: "11/21/2021"
+output:
+  html_document:
+    theme: cerulean
+    highlight: testmate
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+```{r}
+library(tidyverse)
+library(keras)
+use_condaenv("r-reticulate")
+```
+
+
+This is mostly from section 6.4, modified for 7.2
+
+## Implementing a 1D convnet
+  
+In Keras, you use a 1D convnet via the `layer_conv_1d()` function, which has an interface similar to `layer_conv_2d()`. It takes as input 3D tensors with shape `(samples, time, features)` and returns similarly shaped 3D tensors. The convolution window is a 1D window on the temporal axis: the second axis in the input tensor.
+
+Let's build a simple two-layer 1D convnet and apply it to the IMDB sentiment-classification task you're already familiar with. As a reminder, this is the code for obtaining and preprocessing the data.
+
+```{r}
+max_features <- 2000
+max_len <- 500
+
+cat("Loading data...\n")
+imdb <- dataset_imdb(num_words = max_features)
+c(c(x_train, y_train), c(x_test, y_test)) %<-% imdb 
+cat(length(x_train), "train sequences\n")
+cat(length(x_test), "test sequences")
+
+cat("Pad sequences (samples x time)\n")
+x_train <- pad_sequences(x_train, maxlen = max_len)
+x_test <- pad_sequences(x_test, maxlen = max_len)
+cat("x_train shape:", dim(x_train), "\n")
+cat("x_test shape:", dim(x_test), "\n")
+```
+
+1D convnets are structured in the same way as their 2D counterparts, which you used in chapter 5: they consist of a stack of `layer_conv_1d()` and `layer_max_pooling_1d()`, ending in either a global pooling layer or a `layer_flatten()`, that turn the 3D outputs into 2D outputs, allowing you to add one or more dense layers to the model for classification or regression.
+
+One difference, though, is the fact that you can afford to use larger convolution windows with 1D convnets. With a 2D convolution layer, a 3 × 3 convolution window contains 3 * 3 = 9 feature vectors; but with a 1D convolution layer, a convolution window of size 3 contains only 3 feature vectors. You can thus easily afford 1D convolution windows of size 7 or 9.
+
+This is the example 1D convnet for the IMDB dataset.
+
+```{r}
+model <- keras_model_sequential() %>% 
+  layer_embedding(input_dim = max_features, output_dim = 128,
+                  input_length = max_len) %>% 
+  layer_conv_1d(filters = 32, kernel_size = 7, activation = "relu") %>% 
+  layer_max_pooling_1d(pool_size = 5) %>% 
+  layer_conv_1d(filters = 32, kernel_size = 7, activation = "relu") %>% 
+  layer_global_max_pooling_1d() %>% 
+  layer_dense(units = 1)
+
+summary(model)
+
+model %>% compile(
+  optimizer = optimizer_rmsprop(),
+  loss = "binary_crossentropy",
+  metrics = c("acc")
+)
+```
+
+
+```{r}
+if(!dir.exists("7.2_log.dir")) dir.create("7.2_log.dir")
+
+tensorboard("7.2_log.dir")
+
+callbacks <- list(
+  callback_tensorboard(
+    log_dir = "7.2_log.dir",
+    histogram_freq = 1
+  )
+)
+
+history <- model %>% fit(
+  x_train, y_train,
+  epochs = 20,
+  batch_size = 128,
+  validation_split = 0.2,
+  callbacks = callbacks
+)
+```
+
+
+```{r}
+plot(history)
+```
