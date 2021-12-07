@@ -86,7 +86,7 @@ results <- model %>% evaluate(test_images, test_labels)
 results
 ```
  
-# 5.2 cats and gods
+# 5.2 cats and dogs
 
 ## Training a convnet from scratch on a small dataset
 
