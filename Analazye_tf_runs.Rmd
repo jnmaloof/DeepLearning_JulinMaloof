@@ -2,7 +2,7 @@
 title: "Analyze_tfruns"
 author: "Julin Maloof"
 date: "12/7/2021"
-output: html_document
+output: html_notebook
 ---
 
 ```{r setup, include=FALSE}
@@ -38,6 +38,18 @@ head(runsdata)
 
 somehow my flags aren't there, but I can recreate those... 
 ```{r}
+runsdata %>% arrange(desc(metric_val_acc)) %>%
+  select(metric_val_acc, starts_with("flag"))
+```
 
+```{r}
+runsdata %>% 
+  select(metric_val_acc, starts_with("flag")) %>%
+  mutate(flag_four_layer = factor(
+    ifelse(flag_four_layer, "four conv layers", "three conv layers"),
+    levels=c("three conv layers", "four conv layers"))) %>%
+  ggplot(aes(y=metric_val_acc, x=as.factor(flag_filters), fill=as.factor(flag_kernel))) +
+  geom_col(position="dodge") +
+  facet_grid(flag_four_layer ~ flag_dropout)
 ```
 
