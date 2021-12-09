@@ -58,11 +58,7 @@ Let's compare best run to original
 ```{r}
 runsdata %>% filter(metric_val_acc == max(metric_val_acc) |
                       (flag_four_layer==TRUE & flag_dropout==0.5 & flag_filters==32 & flag_kernel==3)) %>%
-  pull(run_dir) %>%
-  basename() %>%
-  magrittr::extract(1:2) %>%
+  magrittr::extract(1:2,) %>%
   compare_runs()
-
-
 ```
 
