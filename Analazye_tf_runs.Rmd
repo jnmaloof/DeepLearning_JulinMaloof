@@ -36,7 +36,6 @@ runsdata <- ls_runs()
 head(runsdata)
 ```
 
-somehow my flags aren't there, but I can recreate those... 
 ```{r}
 runsdata %>% arrange(desc(metric_val_acc)) %>%
   select(metric_val_acc, starts_with("flag"))
