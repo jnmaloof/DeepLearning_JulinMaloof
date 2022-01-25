@@ -112,6 +112,64 @@ train_steps
 val_steps
 ```
 
+Alternate way to do generator: combine two calls to flow_images_from_dataframe
+```{r}
+path.df <- data.frame(image=input_img_paths, target=target_paths)
+
+train.path.df <- path.df[1:(nrow(path.df)-num_val_samples),]
+val.path.df <- path.df[(nrow(path.df)-num_val_samples + 1):nrow(path.df),]
+
+train_img_generator <- flow_images_from_dataframe(dataframe = train.path.df, 
+                                            x_col="image",  
+                                            generator = image_data_generator(rescale=1/255),
+                                            target_size = c(200,200),
+                                            class_mode = NULL,
+                                            batch_size = 64,
+                                            shuffle = FALSE)
+
+train_target_generator <- flow_images_from_dataframe(dataframe = train.path.df,
+                                             x_col = "target",
+                                             generator = image_data_generator(
+                                              preprocessing_function = function(x) x-1),
+                                             target_size = c(200,200),
+                                             color_mode = "grayscale",
+                                             class_mode = NULL,
+                                             batch_size = 64,
+                                             shuffle = FALSE)
+
+val_img_generator <- flow_images_from_dataframe(dataframe = val.path.df, 
+                                            x_col="image",  
+                                            generator = image_data_generator(rescale=1/255),
+                                            target_size = c(200,200),
+                                            class_mode = NULL,
+                                            batch_size = 64,
+                                            shuffle = FALSE)
+
+val_target_generator <- flow_images_from_dataframe(dataframe = val.path.df,
+                                             x_col = "target",
+                                             generator = image_data_generator(
+                                              preprocessing_function = function(x) x-1),
+                                             target_size = c(200,200),
+                                             color_mode = "grayscale",
+                                             class_mode = NULL,
+                                             batch_size = 64,
+                                             shuffle = FALSE)
+
+train_generator2 <- function() {
+  list(input = generator_next(train_img_generator),
+    target = generator_next(train_target_generator))
+}
+
+system.time(str(train_generator()))
+
+system.time(str(train_generator2())) # 2 - 3 times faster, same data
+
+# make sure that the range of the mask is correct
+
+train_generator2()[[2]] %>% as.vector() %>% unique()
+```
+
+
 ```{r}
 num_classes <- 3
 
