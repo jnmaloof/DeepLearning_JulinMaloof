@@ -1,0 +1,166 @@
+---
+title: "Image Segmentation Pets"
+author: "Julin Maloof"
+date: "1/24/2022"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(keras)
+use_condaenv("r-reticulate")
+```
+
+```{r}
+input_dir <- "input/the-oxfordiiit-pet-dataset/images" 
+target_dir = "input/the-oxfordiiit-pet-dataset/annotations/trimaps" 
+
+# make sure data is there
+dir(input_dir)[1:10]
+dir(path = target_dir)[1:10]
+```
+
+```{r}
+input_img_paths = dir(input_dir, pattern="\\.jpg$", full.names = TRUE) %>% 
+    sort() 
+
+target_paths = dir(target_dir, pattern="^[^.].*\\.png$", full.names = TRUE) %>% 
+    sort() 
+
+length(input_img_paths)
+length(target_paths)
+
+head(input_img_paths)
+head(target_paths)
+```
+
+```{r}
+image_load(input_img_paths[10]) %>% 
+    image_to_array() %>%
+    magrittr::divide_by(255) %>%
+    as.raster() %>%
+    plot
+```
+
+```{r}
+display_target <- function(target_array){
+    normalized_array <- ((target_array - 1) * 127)/255
+    plot(as.raster(normalized_array[,,1]))
+    }
+  
+img = image_to_array(image_load(target_paths[10], grayscale=TRUE))
+display_target(img)
+```
+
+```{r}
+total_imgs <- length(input_img_paths)
+
+img_size <- c(200,200)
+
+set.seed(1337)
+order <- sample(total_imgs)
+
+input_img_paths <- input_img_paths[order]
+target_paths <- target_paths[order]
+  
+generator <- function(input_image_paths=input_img_paths, 
+                      input_target_paths=target_paths, 
+                      img_size=c(200,200), 
+                      min_index, max_index, batch_size = 64) {
+    if (is.null(max_index)) max_index <- nrow(data)
+    i <- min_index
+    
+    function() {
+        if (i + batch_size >= max_index) i <<- min_index
+        file_indices <- c(i:min(i+batch_size-1, max_index))
+        num_imgs <- length(file_indices)
+        i <<- i + num_imgs
+        
+        input_imgs <- array(data=0, dim=c(num_imgs, img_size, 3))
+        
+        targets <- array(data=0, dim=c(num_imgs, img_size, 1))
+
+        for( j in 1:num_imgs){
+            f <- file_indices[j]
+            input_imgs[j,,,] <- image_load(input_image_paths[f], 
+                                           target_size=img_size) %>%
+                                    image_to_array() %>%
+                                    magrittr::divide_by(255)
+                        
+            targets[j,,,] <- image_load(input_target_paths[f], 
+                                 target_size=img_size,
+                                 grayscale=TRUE) %>%
+                                image_to_array() %>%
+                                magrittr::subtract(1)
+            }
+
+        return(list(inputs=input_imgs, targets=targets))
+    }
+} 
+
+
+num_val_samples <- 1000
+
+train_generator <- generator(min_index=1, max_index=total_imgs - num_val_samples)
+
+val_generator <- generator(min_index=total_imgs - num_val_samples + 1, max_index=total_imgs)
+
+train_steps <- (total_imgs - num_val_samples)/64
+val_steps <- num_val_samples/64
+
+train_steps
+val_steps
+```
+
+```{r}
+num_classes <- 3
+
+model <- keras_model_sequential() %>%
+  
+  layer_conv_2d(64, 3, strides=2, activation="relu", padding="same", input_shape= c(img_size, 3)) %>%
+  layer_conv_2d(64, 3, activation="relu", padding="same") %>%
+  layer_conv_2d(128, 3, strides=2, activation="relu", padding="same") %>%
+  layer_conv_2d(128, 3, activation="relu", padding="same") %>%
+  layer_conv_2d(256, 3, strides=2, padding="same", activation="relu") %>%
+  layer_conv_2d(256, 3, activation="relu", padding="same") %>%
+  
+  layer_conv_2d_transpose(256, 3, activation="relu", padding="same") %>%
+  layer_conv_2d_transpose(256, 3, activation="relu", padding="same", strides=2) %>%
+  layer_conv_2d_transpose(128, 3, activation="relu", padding="same") %>%
+  layer_conv_2d_transpose(128, 3, activation="relu", padding="same", strides=2) %>%
+  layer_conv_2d_transpose(64, 3, activation="relu", padding="same") %>%
+  layer_conv_2d_transpose(64, 3, activation="relu", padding="same", strides=2) %>%
+
+  layer_conv_2d(num_classes, 3, activation="softmax",padding="same")
+
+model
+```
+
+```{r}
+model %>% compile(optimizer="rmsprop", loss="sparse_categorical_crossentropy")
+
+if(!dir.exists("pets_log.dir")) dir.create("pets_log.dir")
+
+tensorboard("pets__log.dir")
+  
+callbacks <- list(
+  callback_tensorboard(
+    log_dir = "pets__log.dir",
+    histogram_freq = 1
+  ), 
+  callback_model_checkpoint( filepath="oxford_segmentation_model.h5",
+                               monitor="val_loss", 
+                                    save_best_only=TRUE)
+)
+  
+    history <- model %>% fit(train_generator,
+                    epochs=50,
+                    callbacks=callbacks,
+                    batch_size=64,
+                    steps_per_epoch=100,
+                    validation_data=val_generator,
+                    validation_steps=15)                                        
+            
+plot(history)
+```
+
