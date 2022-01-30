@@ -167,9 +167,9 @@ model
 ```{r}
 model %>% compile(optimizer="rmsprop", loss="sparse_categorical_crossentropy")
 
-if(!dir.exists("pets_log.dir")) dir.create("pets_log.dir")
+if(!dir.exists("pets_log.dir")) dir.create("CUB_log.dir")
 
-tensorboard("pets__log.dir")
+tensorboard("CUB__log.dir")
   
 callbacks <- list(
   callback_tensorboard(
