@@ -56,11 +56,22 @@ range(img)
 
 as.vector(img) %>% round(img) %>% unique() # 6 levels, what are they? I may want to collapse the middle ranges?
 
+as.vector(img) %>% round(img) %>% unique() %>% ifelse(. > 0 & . < 255, 1, .) %>%  ifelse(.==255, 2, .)
+
 display_target(img)
 ```
 
 Custom generator: combine two calls to flow_images_from_dataframe
 ```{r}
+adjust_mask <- function(x) {
+  ifelse(x > 0 & x < 255, 1, x) %>%  
+    ifelse(.==255, 2, .)
+}
+
+num_val_samples <- 2000
+
+batch_size <- 128
+
 total_imgs <- length(input_img_paths)
 
 img_size <- c(200,200)
@@ -87,17 +98,17 @@ train_img_generator <- flow_images_from_dataframe(dataframe = train.path.df,
                                             generator = image_data_generator(rescale=1/255),
                                             target_size = c(200,200),
                                             class_mode = NULL,
-                                            batch_size = 64,
+                                            batch_size = batch_size,
                                             shuffle = FALSE)
 
 train_target_generator <- flow_images_from_dataframe(dataframe = train.path.df,
                                              x_col = "target",
                                              generator = image_data_generator(
-                                              preprocessing_function = function(x) x-1),
+                                              preprocessing_function = adjust_mask),
                                              target_size = c(200,200),
                                              color_mode = "grayscale",
                                              class_mode = NULL,
-                                             batch_size = 64,
+                                             batch_size = batch_size,
                                              shuffle = FALSE)
 
 val_img_generator <- flow_images_from_dataframe(dataframe = val.path.df, 
@@ -105,27 +116,23 @@ val_img_generator <- flow_images_from_dataframe(dataframe = val.path.df,
                                             generator = image_data_generator(rescale=1/255),
                                             target_size = c(200,200),
                                             class_mode = NULL,
-                                            batch_size = 64,
+                                            batch_size = batch_size,
                                             shuffle = FALSE)
 
 val_target_generator <- flow_images_from_dataframe(dataframe = val.path.df,
                                              x_col = "target",
                                              generator = image_data_generator(
-                                              preprocessing_function = function(x) x-1),
+                                              preprocessing_function = adjust_mask),
                                              target_size = c(200,200),
                                              color_mode = "grayscale",
                                              class_mode = NULL,
-                                             batch_size = 64,
+                                             batch_size = batch_size,
                                              shuffle = FALSE)
 
 train_generator2 <- function() {
   list(input = generator_next(train_img_generator),
     target = generator_next(train_target_generator))
 }
-
-system.time(str(train_generator()))
-
-system.time(str(train_generator2())) # 2 - 3 times faster, same data
 
 # make sure that the range of the mask is correct
 
@@ -177,10 +184,10 @@ callbacks <- list(
     history <- model %>% fit(train_generator,
                     epochs=50,
                     callbacks=callbacks,
-                    batch_size=64,
-                    steps_per_epoch=100,
+                    batch_size=batch_size,
+                    steps_per_epoch=round(train_steps),
                     validation_data=val_generator,
-                    validation_steps=15)                                        
+                    validation_steps=round(val_steps))                                        
             
 plot(history)
 ```
