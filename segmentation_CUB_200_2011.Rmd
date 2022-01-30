@@ -1,0 +1,187 @@
+---
+title: "Image Segmentation CUB200_2011"
+author: "Julin Maloof"
+date: "1/31/2022"
+output: html_document
+---
+
+Trying out segmentation on CUB200 data set
+
+```{r}
+library(tidyverse)
+library(keras)
+use_condaenv("r-reticulate")
+```
+
+```{r}
+input_dir <- "input/CUB_200_2011/CUB_200_2011/images/" 
+target_dir = "input/CUB_200_2011/segmentations/" 
+
+# make sure data is there
+dir(input_dir)[1:10]
+dir(path = target_dir)[1:10]
+```
+
+```{r}
+input_img_paths = dir(input_dir, pattern="\\.jpg$", full.names = TRUE, recursive = TRUE) %>% 
+    sort() 
+
+target_paths = dir(target_dir, pattern="^[^.].*\\.png$", full.names = TRUE, recursive = TRUE) %>% 
+    sort() 
+
+length(input_img_paths)
+length(target_paths)
+
+head(input_img_paths)
+head(target_paths)
+```
+
+```{r}
+image_load(input_img_paths[10]) %>% 
+    image_to_array() %>%
+    magrittr::divide_by(255) %>%
+    as.raster() %>%
+    plot
+```
+
+```{r}
+display_target <- function(target_array){
+    normalized_array <- ((target_array ))/255 # had to remove the "-1" and the * 127
+    plot(as.raster(normalized_array[,,1]))
+    }
+  
+img = image_to_array(image_load(target_paths[10], grayscale=TRUE))
+
+range(img)
+
+as.vector(img) %>% round(img) %>% unique() # 6 levels, what are they? I may want to collapse the middle ranges?
+
+display_target(img)
+```
+
+Custom generator: combine two calls to flow_images_from_dataframe
+```{r}
+total_imgs <- length(input_img_paths)
+
+img_size <- c(200,200)
+
+set.seed(1337)
+order <- sample(total_imgs)
+
+input_img_paths <- input_img_paths[order]
+target_paths <- target_paths[order]
+
+train_steps <- (total_imgs - num_val_samples)/64
+val_steps <- num_val_samples/64
+
+train_steps
+val_steps
+
+path.df <- data.frame(image=input_img_paths, target=target_paths)
+
+train.path.df <- path.df[1:(nrow(path.df)-num_val_samples),]
+val.path.df <- path.df[(nrow(path.df)-num_val_samples + 1):nrow(path.df),]
+
+train_img_generator <- flow_images_from_dataframe(dataframe = train.path.df, 
+                                            x_col="image",  
+                                            generator = image_data_generator(rescale=1/255),
+                                            target_size = c(200,200),
+                                            class_mode = NULL,
+                                            batch_size = 64,
+                                            shuffle = FALSE)
+
+train_target_generator <- flow_images_from_dataframe(dataframe = train.path.df,
+                                             x_col = "target",
+                                             generator = image_data_generator(
+                                              preprocessing_function = function(x) x-1),
+                                             target_size = c(200,200),
+                                             color_mode = "grayscale",
+                                             class_mode = NULL,
+                                             batch_size = 64,
+                                             shuffle = FALSE)
+
+val_img_generator <- flow_images_from_dataframe(dataframe = val.path.df, 
+                                            x_col="image",  
+                                            generator = image_data_generator(rescale=1/255),
+                                            target_size = c(200,200),
+                                            class_mode = NULL,
+                                            batch_size = 64,
+                                            shuffle = FALSE)
+
+val_target_generator <- flow_images_from_dataframe(dataframe = val.path.df,
+                                             x_col = "target",
+                                             generator = image_data_generator(
+                                              preprocessing_function = function(x) x-1),
+                                             target_size = c(200,200),
+                                             color_mode = "grayscale",
+                                             class_mode = NULL,
+                                             batch_size = 64,
+                                             shuffle = FALSE)
+
+train_generator2 <- function() {
+  list(input = generator_next(train_img_generator),
+    target = generator_next(train_target_generator))
+}
+
+system.time(str(train_generator()))
+
+system.time(str(train_generator2())) # 2 - 3 times faster, same data
+
+# make sure that the range of the mask is correct
+
+train_generator2()[[2]] %>% as.vector() %>% unique()
+```
+
+
+```{r}
+num_classes <- 3
+
+model <- keras_model_sequential() %>%
+  
+  layer_conv_2d(64, 3, strides=2, activation="relu", padding="same", input_shape= c(img_size, 3)) %>%
+  layer_conv_2d(64, 3, activation="relu", padding="same") %>%
+  layer_conv_2d(128, 3, strides=2, activation="relu", padding="same") %>%
+  layer_conv_2d(128, 3, activation="relu", padding="same") %>%
+  layer_conv_2d(256, 3, strides=2, padding="same", activation="relu") %>%
+  layer_conv_2d(256, 3, activation="relu", padding="same") %>%
+  
+  layer_conv_2d_transpose(256, 3, activation="relu", padding="same") %>%
+  layer_conv_2d_transpose(256, 3, activation="relu", padding="same", strides=2) %>%
+  layer_conv_2d_transpose(128, 3, activation="relu", padding="same") %>%
+  layer_conv_2d_transpose(128, 3, activation="relu", padding="same", strides=2) %>%
+  layer_conv_2d_transpose(64, 3, activation="relu", padding="same") %>%
+  layer_conv_2d_transpose(64, 3, activation="relu", padding="same", strides=2) %>%
+
+  layer_conv_2d(num_classes, 3, activation="softmax",padding="same")
+
+model
+```
+
+```{r}
+model %>% compile(optimizer="rmsprop", loss="sparse_categorical_crossentropy")
+
+if(!dir.exists("pets_log.dir")) dir.create("pets_log.dir")
+
+tensorboard("pets__log.dir")
+  
+callbacks <- list(
+  callback_tensorboard(
+    log_dir = "pets__log.dir",
+    histogram_freq = 1
+  ), 
+  callback_model_checkpoint( filepath="oxford_segmentation_model.h5",
+                               monitor="val_loss", 
+                                    save_best_only=TRUE)
+)
+  
+    history <- model %>% fit(train_generator,
+                    epochs=50,
+                    callbacks=callbacks,
+                    batch_size=64,
+                    steps_per_epoch=100,
+                    validation_data=val_generator,
+                    validation_steps=15)                                        
+            
+plot(history)
+```
+
