@@ -129,14 +129,19 @@ val_target_generator <- flow_images_from_dataframe(dataframe = val.path.df,
                                              batch_size = batch_size,
                                              shuffle = FALSE)
 
-train_generator2 <- function() {
+train_generator <- function() {
   list(input = generator_next(train_img_generator),
     target = generator_next(train_target_generator))
 }
 
+val_generator <- function() {
+  list(input = generator_next(val_img_generator),
+    target = generator_next(val_target_generator))
+}
+
 # make sure that the range of the mask is correct
 
-train_generator2()[[2]] %>% as.vector() %>% unique()
+train_generator()[[2]] %>% as.vector() %>% unique()
 ```
 
 
@@ -176,7 +181,7 @@ callbacks <- list(
     log_dir = "pets__log.dir",
     histogram_freq = 1
   ), 
-  callback_model_checkpoint( filepath="oxford_segmentation_model.h5",
+  callback_model_checkpoint( filepath="CUB_segmentation_model.h5",
                                monitor="val_loss", 
                                     save_best_only=TRUE)
 )
@@ -190,5 +195,34 @@ callbacks <- list(
                     validation_steps=round(val_steps))                                        
             
 plot(history)
+```
+
+## Test it
+
+### set up directories
+```{r}
+test_dir <- "input/CUB_200_2011/test/test_bird_images/"
+
+test.df = tibble(image=dir(test_dir, pattern="\\.jpg$", full.names = TRUE, recursive = TRUE))
+
+head(test.df)
+
+```
+
+### generator
+
+```{r}
+train_img_generator <- flow_images_from_dataframe(dataframe = test.df, 
+                                            x_col="image",  
+                                            generator = image_data_generator(rescale=1/255),
+                                            #target_size = c(200,200),
+                                            class_mode = NULL,
+                                            batch_size = nrow(test.df),
+                                            shuffle = FALSE)
+```
+
+### load model and predict
+```{r}
+model <- load_model_hdf5("input/CUB_200_2011/test/CUB_segmentation_model_20.hdf5")
 ```
 
